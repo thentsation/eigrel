@@ -12,6 +12,24 @@ license = 'Apache-2.0'
 license-files = ['LICENSE']
 authors = [{ name = 'Nathan Souza' }]
 dependencies = []
+keywords = ['programming-language', 'compiler', 'data-engineering', 'machine-learning', 'mlops', 'dsl']
+classifiers = [
+    'Development Status :: 2 - Pre-Alpha',
+    'Environment :: Console',
+    'Intended Audience :: Developers',
+    'Intended Audience :: Science/Research',
+    'Programming Language :: Python :: 3',
+    'Programming Language :: Python :: 3.13',
+    'Programming Language :: Python :: 3.14',
+    'Topic :: Software Development :: Compilers',
+    'Topic :: Scientific/Engineering :: Artificial Intelligence',
+]
+
+[project.urls]
+Homepage = 'https://github.com/thentsation/eigrel'
+Documentation = 'https://github.com/thentsation/eigrel/blob/main/docs/LANGUAGE.md'
+Issues = 'https://github.com/thentsation/eigrel/issues'
+Changelog = 'https://github.com/thentsation/eigrel/blob/main/CHANGELOG.md'
 
 [project.scripts]
 eigrel = 'eigrel.cli:main'
