@@ -1,0 +1,79 @@
+# Contributing to Eigrel
+
+Thanks for your interest in Eigrel! This guide covers how to report problems, propose language
+changes and send code.
+
+By participating you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Reporting bugs
+
+Open a [bug report](https://github.com/thentsation/eigrel/issues/new?template=bug_report.yml) with:
+
+- the smallest `.eig` program that reproduces the problem,
+- the command you ran and its full output,
+- `eigrel --version` and your Python version.
+
+Security issues must **not** go in public issues; see [SECURITY.md](SECURITY.md).
+
+## Proposing language changes
+
+Syntax and semantics are the hardest things to change later, so new language features start as a
+[proposal issue](https://github.com/thentsation/eigrel/issues/new?template=feature_request.yml)
+before any code. A good proposal shows:
+
+- the problem, with a real data/ML/AI use case,
+- example Eigrel code as you would like to write it,
+- what it should compile to (Python, SQL, ...),
+- alternatives you considered.
+
+Small fixes (typos, error messages, docs, bugs) don't need a proposal.
+
+## Development setup
+
+You need Python 3.13+ and [uv](https://docs.astral.sh/uv/).
+
+```bash
+git clone https://github.com/thentsation/eigrel.git
+cd eigrel
+make install      # creates .venv with eigrel in editable mode plus dev tools
+```
+
+Before opening a pull request, run:
+
+```bash
+make lint         # ruff check + format check
+make typecheck    # mypy
+make coverage     # tests, must stay at or above 90% coverage
+make check-examples
+```
+
+## Code layout
+
+| Path | Contents |
+|---|---|
+| `src/eigrel/compiler/` | Lexer, parser, AST and diagnostics |
+| `src/eigrel/cli.py` | The `eigrel` command |
+| `tests/` | pytest suite |
+| `examples/` | Example programs, checked in CI |
+| `docs/` | Language reference and roadmap |
+
+Every syntax change must update the parser tests, [docs/LANGUAGE.md](docs/LANGUAGE.md) and, when it
+helps, an example in `examples/`.
+
+## Commit messages
+
+Eigrel uses [Conventional Commits](https://www.conventionalcommits.org/); versions and the changelog
+are generated from them by semantic-release.
+
+| Prefix | Use for | Release |
+|---|---|---|
+| `feat:` | New language or CLI feature | minor |
+| `fix:` | Bug fix | patch |
+| `docs:`, `test:`, `refactor:`, `ci:`, `chore:` | Everything else | none |
+
+Breaking changes add `!` after the type (`feat!:`) and explain the migration in the commit body.
+
+## License
+
+By contributing you agree that your contributions are licensed under the
+[Apache License 2.0](LICENSE).

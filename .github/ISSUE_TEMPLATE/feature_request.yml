@@ -1,0 +1,28 @@
+name: Language or feature proposal
+description: Propose new syntax, a new backend or a CLI feature.
+labels: [proposal]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What data, ML or AI use case is hard or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Proposed Eigrel code
+      description: Show the code you would like to write.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: What it compiles to
+      description: The Python, SQL or other code this should produce, if known.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
