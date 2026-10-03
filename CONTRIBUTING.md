@@ -77,7 +77,9 @@ Every pull request runs these workflows, and all of them must pass:
 | `docker` | The image builds, the CLI runs inside it, and Trivy finds no high or critical issues |
 | `codeql` | CodeQL on the Python code and the workflows, plus [zizmor](https://docs.zizmor.sh/) on the workflows |
 
-Actions are pinned to commit SHAs; Dependabot proposes updates once a month. Releases are automatic:
+Actions are pinned to commit SHAs; Dependabot proposes updates once a month. When a change touches
+`config/requirements.txt`, run `make lock` and commit the regenerated `config/requirements.lock`,
+which the Docker image and `pip-audit` use. Releases are automatic:
 merging a `feat:` or `fix:` commit to `main` makes the `release` workflow publish the new version to
 PyPI, the GitHub release and the container registry.
 
