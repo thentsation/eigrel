@@ -45,7 +45,17 @@ come in v0.2. See the [roadmap](docs/ROADMAP.md).
 
 ## Getting started
 
-Requires Python 3.13+ and [uv](https://docs.astral.sh/uv/).
+Install from PyPI (Python 3.13+):
+
+```bash
+pip install eigrel
+eigrel init churn
+eigrel check churn/main.eig
+```
+
+### From source
+
+Requires [uv](https://docs.astral.sh/uv/).
 
 ```bash
 make install                     # creates .venv and installs eigrel in editable mode
