@@ -4,8 +4,6 @@
 
 > Write what you want. Let the compiler decide how to run it.
 
-🇧🇷 [Leia em português](README.pt-br.md)
-
 Eigrel is a declarative language for data engineering, machine learning and GenAI. You describe
 datasets, transformations, features and models in one language; the compiler decides whether each
 step becomes Python, SQL, Spark or something else.
