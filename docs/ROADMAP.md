@@ -1,0 +1,69 @@
+# Roadmap
+
+| Version | Theme | Scope | Status |
+|---|---|---|---|
+| v0.1 | Language | Lexer, parser, AST, basic types, datasets, transformations, CLI | 🚧 in progress |
+| v0.2 | Compiler | Semantic analysis, Eigrel IR, execution graph, Python backend | |
+| v0.3 | Data | CSV, Parquet, SQL, BigQuery, Spark | |
+| v0.4 | ML | Features, models, training, evaluation, MLflow (`register`) | |
+| v0.5 | Optimizer | Filter/projection pushdown, CSE, DAG optimization, backend selection, execution planning | |
+| v0.6 | GenAI | Embeddings, vector stores, RAG (`knowledge`, `assistant`), LLMs, evaluation | |
+| v0.7 | Agents | Tools, agents, workflows, multi-agent pipelines | |
+| v1.0 | Platform | Language, compiler, IR, optimizer, runtime, backends, CLI, package manager, registry, VS Code extension, docs | |
+
+## Target architecture
+
+```text
+Eigrel source
+   │
+   ▼
+Lexer → Parser → AST → Semantic analysis → Eigrel IR → Optimizer
+                                                          │
+                                   ┌──────────────────────┼──────────────────────┐
+                                   ▼                      ▼                      ▼
+                                 Python                  SQL                   Spark
+```
+
+Later backends: PyTorch, MLIR, BigQuery, cloud runtimes.
+
+## CLI, planned
+
+```bash
+eigrel init my-project   # ✅ v0.1
+eigrel check             # ✅ v0.1 (syntax only)
+eigrel build             # v0.2
+eigrel run               # v0.2
+eigrel compile file.eig  # v0.2
+eigrel fmt               # v0.2
+eigrel add xgboost       # package manager, v1.0
+```
+
+## Future syntax sketches
+
+These are design notes, not yet accepted by the parser.
+
+```eigrel
+register churn                      # MLflow
+
+knowledge company_docs {
+    source = "gs://company/docs"
+    embedding = "text-embedding-model"
+    vectorstore = "pgvector"
+}
+
+assistant support {
+    retrieve company_docs { top = 5 }
+    generate { model = "llm" }
+}
+
+agent analyst {
+    tools = [sql, python, search]
+    model = "llm"
+    goal = "analyze customer behavior"
+}
+
+deploy churn {
+    runtime = cloud_run
+    replicas = 3
+}
+```

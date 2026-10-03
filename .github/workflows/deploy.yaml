@@ -1,0 +1,26 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  demo-run:
+    name: Smoke test the published image (manual)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run the published CLI against the examples
+        run: |
+          docker pull ghcr.io/${{ github.repository }}:latest
+          docker run --rm ghcr.io/${{ github.repository }}:latest --version
+          docker run --rm -v "$PWD/examples:/work" ghcr.io/${{ github.repository }}:latest check hello.eig pipeline.eig ml.eig

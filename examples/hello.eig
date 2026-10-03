@@ -1,0 +1,3 @@
+# The smallest useful Eigrel program: declare where the data lives.
+
+dataset customers from csv("data/customers.csv")

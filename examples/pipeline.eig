@@ -1,0 +1,10 @@
+# Load users from BigQuery and keep only adults with a known income.
+# Later versions of the compiler will push this filter and projection
+# down into BigQuery instead of running them in Python.
+
+dataset users from bigquery("project.dataset.users")
+
+transform users {
+    filter age > 18 and income != 0
+    select age, income, country
+}

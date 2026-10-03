@@ -1,0 +1,28 @@
+# End-to-end churn model: data, transformation, features, training and evaluation.
+
+dataset customers from csv("data/customers.csv")
+
+transform customers {
+    filter age >= 18
+    select age, income, purchases, churned
+}
+
+features customers {
+    age
+    income
+    purchases
+}
+
+model churn = random_forest {
+    trees = 100
+    max_depth = 8
+}
+
+train churn {
+    target = churned
+    validation = 0.2
+}
+
+evaluate churn {
+    metrics = [accuracy, precision, recall, f1]
+}

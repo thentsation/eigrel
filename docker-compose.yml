@@ -1,0 +1,9 @@
+services:
+  eigrel:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: eigrel
+    volumes:
+      - ./examples:/work
+    command: ['check', 'hello.eig', 'pipeline.eig', 'ml.eig']
