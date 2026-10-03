@@ -44,6 +44,7 @@ where = ['src']
 [tool.semantic_release]
 tag_format = 'v{version}'
 commit_message = 'chore(release): v{version} [skip ci]'
+commit_author = 'github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'
 version_toml = ['pyproject.toml:project.version']
 version_variables = ['src/eigrel/__init__.py:__version__']
 allow_zero_version = true
@@ -51,6 +52,10 @@ major_on_zero = false
 
 [tool.semantic_release.branches.main]
 match = 'main'
+
+[tool.semantic_release.remote]
+# Push with the deploy key set up by the checkout, which may bypass the main branch ruleset.
+ignore_token_for_push = true
 
 [tool.ruff]
 target-version = 'py313'

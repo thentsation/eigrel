@@ -21,38 +21,40 @@ jobs:
     name: version
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # The release environment holds the deploy key that may push to the protected main branch.
+    environment: release
     permissions:
       contents: write
     outputs:
       released: ${{ steps.semantic.outputs.released }}
-      tag: ${{ steps.tag.outputs.tag }}
+      tag: ${{ steps.semantic.outputs.tag }}
     steps:
-      # semantic-release pushes the version commit and tag with these credentials, so they
-      # must persist in this job; nothing here uploads artifacts.
+      # semantic-release pushes the version commit and tag over SSH with the deploy key, which
+      # the main branch ruleset allows; nothing in this job uploads artifacts.
       - name: Checkout repository # zizmor: ignore[artipacked]
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
       - name: Semantic release
         id: semantic
-        uses: python-semantic-release/python-semantic-release@b700dbeb1f431a0fcc30a79f3f0869407fe07278 # v10.7.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Resolve the tag to publish
-        id: tag
         env:
-          NEW_TAG: ${{ steps.semantic.outputs.tag }}
-          RELEASED: ${{ steps.semantic.outputs.released }}
+          GH_TOKEN: ${{ github.token }}
+          PSR: python-semantic-release==10.7.0
         run: |
-          if [ "$RELEASED" = "true" ]; then
-            TAG="$NEW_TAG"
+          BEFORE=$(uvx --from "$PSR" semantic-release version --print-last-released-tag 2>/dev/null || true)
+          uvx --from "$PSR" semantic-release -v version
+          AFTER=$(uvx --from "$PSR" semantic-release version --print-last-released-tag)
+          if [ -n "$AFTER" ] && [ "$AFTER" != "$BEFORE" ]; then
+            echo "released=true" >> "$GITHUB_OUTPUT"
           else
-            TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+            echo "released=false" >> "$GITHUB_OUTPUT"
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "tag=$AFTER" >> "$GITHUB_OUTPUT"
 
   build:
     name: build distributions
