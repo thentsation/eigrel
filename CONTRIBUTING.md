@@ -83,6 +83,21 @@ which the Docker image and `pip-audit` use. Releases are automatic:
 merging a `feat:` or `fix:` commit to `main` makes the `release` workflow publish the new version to
 PyPI, the GitHub release and the container registry.
 
+## Pull requests
+
+`main` is protected: every change, including the maintainers', lands through a pull request.
+
+1. Create a branch, commit, push it and open a pull request against `main`.
+2. Wait for the required checks (`ci`, `docker`, `codeql`) to pass; CodeQL and zizmor must report
+   no new alerts.
+3. Merge with **squash** (or rebase). History stays linear and merge commits are disabled.
+
+With squash merging, the pull request title becomes the commit message on `main`, so the title must
+follow Conventional Commits too: it decides whether a release happens.
+
+Release tags (`v*`) cannot be moved or deleted. Only the release workflow, through a deploy key,
+pushes to `main` directly.
+
 ## Commit messages
 
 Eigrel uses [Conventional Commits](https://www.conventionalcommits.org/); versions and the changelog
