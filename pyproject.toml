@@ -25,6 +25,10 @@ classifiers = [
     'Topic :: Scientific/Engineering :: Artificial Intelligence',
 ]
 
+[project.optional-dependencies]
+# Needed by `eigrel run` to execute programs with the Python backend.
+python = ['pandas>=3.0,<3.1', 'scikit-learn>=1.9,<1.10']
+
 [project.urls]
 Homepage = 'https://github.com/thentsation/eigrel'
 Documentation = 'https://github.com/thentsation/eigrel/blob/main/docs/LANGUAGE.md'

@@ -6,4 +6,4 @@ services:
     image: eigrel
     volumes:
       - ./examples:/work
-    command: ['check', 'hello.eig', 'pipeline.eig', 'ml.eig']
+    command: ['run', 'ml.eig']

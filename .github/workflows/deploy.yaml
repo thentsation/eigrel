@@ -24,3 +24,4 @@ jobs:
           docker pull ghcr.io/${{ github.repository }}:latest
           docker run --rm ghcr.io/${{ github.repository }}:latest --version
           docker run --rm -v "$PWD/examples:/work" ghcr.io/${{ github.repository }}:latest check hello.eig pipeline.eig ml.eig
+          docker run --rm -v "$PWD/examples:/work" ghcr.io/${{ github.repository }}:latest run ml.eig

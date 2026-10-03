@@ -41,54 +41,72 @@ evaluate churn {
 
 ## Status
 
-Eigrel is at **v0.1 — Language**: the lexer, parser and syntax tree are done, and the CLI can
-check files and print their tokens or AST. Nothing executes yet; the compiler, IR and Python backend
-come in v0.2. See the [roadmap](docs/ROADMAP.md).
+Eigrel is at **v0.2 — Compiler**: programs are checked for meaning, lowered into an intermediate
+representation and compiled to Python (pandas + scikit-learn), so `eigrel run` trains and
+evaluates real models. Next up: more data sources (v0.3). See the [roadmap](docs/ROADMAP.md).
 
 ## Getting started
 
-Install from PyPI (Python 3.13+):
+Install from PyPI (Python 3.13+). The `python` extra adds pandas and scikit-learn, which
+`eigrel run` needs:
 
 ```bash
-pip install eigrel
-eigrel init churn
-eigrel check churn/main.eig
+pip install "eigrel[python]"
+eigrel init churn             # creates churn/main.eig and sample data
+eigrel run churn/main.eig
 ```
 
-### From source
-
-Requires [uv](https://docs.astral.sh/uv/).
-
-```bash
-make install                     # creates .venv and installs eigrel in editable mode
-.venv/bin/eigrel init churn      # creates churn/main.eig
-.venv/bin/eigrel check churn/main.eig
+```text
+churn: random_forest classification, trained on 315 rows, validated on 79
+  accuracy   0.7975
+  precision  0.7442
+  recall     0.8649
+  f1         0.8000
 ```
 
 ### CLI
 
 | Command | What it does |
 |---|---|
-| `eigrel check FILE...` | Parses each file and reports syntax errors with line and column |
+| `eigrel run FILE` | Compiles the program to Python and runs it |
+| `eigrel check FILE...` | Reports syntax and semantic errors with line and column |
+| `eigrel compile FILE [-o PATH]` | Prints (or writes) the generated Python code |
+| `eigrel ir FILE` | Prints the intermediate representation |
 | `eigrel ast FILE` | Prints the syntax tree as JSON |
 | `eigrel tokens FILE` | Prints the token stream |
-| `eigrel init NAME` | Creates a project with a starter `main.eig` |
+| `eigrel init NAME` | Creates a project with a starter program and sample data |
 
-Errors point at the exact spot:
+The compiler catches mistakes before anything runs, and points at the exact spot:
 
 ```text
-error: comparisons cannot be chained; combine them with 'and'
- --> pipeline.eig:4:21
+error: column 'income' does not exist here; available columns: age, purchases, churned
+ --> churn.eig:9:5
   |
-4 |     filter age > 18 < 30
-  |                     ^
+9 |     income
+  |     ^
+```
+
+### How it works
+
+```text
+source → lexer → parser → AST → semantic analysis → IR → Python backend → pandas + scikit-learn
+```
+
+`eigrel ir` shows the graph the backends work from:
+
+```text
+%0 = load csv("data/customers.csv")  # customers
+%1 = filter %0 (age >= 18)  # customers
+%2 = select %1 [age, income, purchases, churned]  # customers
+%3 = train %2 random_forest(trees=100, max_depth=8) classification features=[age, income, purchases] target=churned validation=0.2 seed=42  # churn
+%4 = evaluate %3 [accuracy, precision, recall, f1]  # churn
 ```
 
 ### Docker
 
 ```bash
 make docker-build
-make docker-run      # runs `eigrel check` on examples/ml.eig inside the container
+make docker-run      # runs examples/ml.eig inside the container
 ```
 
 ## Language

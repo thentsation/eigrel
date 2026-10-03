@@ -31,3 +31,7 @@ class LexError(EigrelError):
 
 class ParseError(EigrelError):
     pass
+
+
+class SemanticError(EigrelError):
+    pass

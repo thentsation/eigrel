@@ -2,8 +2,8 @@
 
 | Version | Theme | Scope | Status |
 |---|---|---|---|
-| v0.1 | Language | Lexer, parser, AST, basic types, datasets, transformations, CLI | 🚧 in progress |
-| v0.2 | Compiler | Semantic analysis, Eigrel IR, execution graph, Python backend | |
+| v0.1 | Language | Lexer, parser, AST, basic types, datasets, transformations, CLI | ✅ done |
+| v0.2 | Compiler | Semantic analysis, Eigrel IR, execution graph, Python backend | ✅ done |
 | v0.3 | Data | CSV, Parquet, SQL, BigQuery, Spark | |
 | v0.4 | ML | Features, models, training, evaluation, MLflow (`register`) | |
 | v0.5 | Optimizer | Filter/projection pushdown, CSE, DAG optimization, backend selection, execution planning | |
@@ -29,12 +29,13 @@ Later backends: PyTorch, MLIR, BigQuery, cloud runtimes.
 ## CLI, planned
 
 ```bash
-eigrel init my-project   # ✅ v0.1
-eigrel check             # ✅ v0.1 (syntax only)
-eigrel build             # v0.2
-eigrel run               # v0.2
-eigrel compile file.eig  # v0.2
-eigrel fmt               # v0.2
+eigrel init my-project   # ✅ v0.1 (sample data since v0.2)
+eigrel check             # ✅ v0.2 (syntax and semantics)
+eigrel run               # ✅ v0.2
+eigrel compile file.eig  # ✅ v0.2
+eigrel ir file.eig       # ✅ v0.2
+eigrel build             # planned
+eigrel fmt               # planned
 eigrel add xgboost       # package manager, v1.0
 ```
 

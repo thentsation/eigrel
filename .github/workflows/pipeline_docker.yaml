@@ -35,7 +35,9 @@ jobs:
         run: docker build -t eigrel:latest -f docker/Dockerfile .
 
       - name: Smoke test the CLI inside the image
-        run: docker run --rm -v "$PWD/examples:/work" eigrel:latest check hello.eig pipeline.eig ml.eig
+        run: |
+          docker run --rm -v "$PWD/examples:/work" eigrel:latest check hello.eig pipeline.eig ml.eig
+          docker run --rm -v "$PWD/examples:/work" eigrel:latest run ml.eig
 
       - name: Export image for scanning
         run: docker save eigrel:latest -o /tmp/image.tar

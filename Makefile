@@ -1,11 +1,11 @@
-.PHONY: install test coverage lint format typecheck check-examples lock docker-build docker-run clean
+.PHONY: install test coverage lint format typecheck check-examples run-examples lock docker-build docker-run clean
 
 VENV := .venv
 PYTHON := $(VENV)/bin/python
 
 install:
 	uv venv --python 3.14 $(VENV)
-	uv pip install --python $(PYTHON) -r config/requirements-dev.txt -e .
+	uv pip install --python $(PYTHON) -r config/requirements-dev.txt -e '.[python]'
 
 test:
 	$(PYTHON) -m pytest
@@ -27,6 +27,10 @@ typecheck:
 check-examples:
 	$(VENV)/bin/eigrel check examples/*.eig
 
+run-examples:
+	$(VENV)/bin/eigrel run examples/ml.eig
+	$(VENV)/bin/eigrel run examples/regression.eig
+
 lock:
 	uv pip compile config/requirements.txt --output-file=config/requirements.lock --universal
 
@@ -34,7 +38,7 @@ docker-build:
 	docker build -f docker/Dockerfile -t eigrel .
 
 docker-run:
-	docker run --rm -v $(CURDIR)/examples:/work eigrel check /work/ml.eig
+	docker run --rm -v $(CURDIR)/examples:/work eigrel run ml.eig
 
 clean:
 	find . -type d -name __pycache__ -not -path './$(VENV)/*' -exec rm -rf {} +

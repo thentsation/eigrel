@@ -1,0 +1,23 @@
+# Regression: predict a customer's income from their profile.
+# No task is given; the compiler infers regression from the metrics.
+
+dataset customers from csv("data/customers.csv")
+
+transform customers {
+    filter age >= 18
+    select age, purchases, income
+}
+
+model income_model = gradient_boosting {
+    trees = 100
+    learning_rate = 0.05
+    max_depth = 2
+}
+
+train income_model {
+    target = income
+}
+
+evaluate income_model {
+    metrics = [mae, rmse, r2]
+}

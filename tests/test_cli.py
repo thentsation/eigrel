@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import runpy
 from pathlib import Path
@@ -7,6 +8,8 @@ import pytest
 from eigrel import __version__
 from eigrel.cli import main
 
+VALID = 'dataset d from csv("d.csv")\nmodel m = random_forest'
+
 
 def write(tmp_path: Path, source: str, name: str = 'main.eig') -> str:
     path = tmp_path / name
@@ -15,20 +18,22 @@ def write(tmp_path: Path, source: str, name: str = 'main.eig') -> str:
 
 
 def test_check_ok(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    path = write(tmp_path, 'dataset d from csv("d.csv")\nmodel m = rf')
+    path = write(tmp_path, VALID)
     assert main(['check', path]) == 0
-    assert capsys.readouterr().out == f'ok: {path} (2 statements)\n'
+    assert capsys.readouterr().out == f'ok: {path} (1 operation)\n'
 
 
 def test_check_reports_errors_and_keeps_going(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    bad = write(tmp_path, 'model m rf', 'bad.eig')
-    good = write(tmp_path, 'model m = rf', 'good.eig')
-    assert main(['check', bad, good]) == 1
+    bad = write(tmp_path, 'model m random_forest', 'bad.eig')
+    unknown = write(tmp_path, 'model m = rf', 'unknown.eig')
+    good = write(tmp_path, VALID, 'good.eig')
+    assert main(['check', bad, unknown, good]) == 1
     out, err = capsys.readouterr()
     assert f'ok: {good}' in out
     assert f'{bad}:1:9' in err
+    assert "unknown algorithm 'rf'" in err
 
 
 def test_check_missing_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -37,19 +42,19 @@ def test_check_missing_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
 
 
 def test_ast(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    path = write(tmp_path, 'model m = rf')
-    assert main(['ast', path]) == 0
+    assert main(['ast', write(tmp_path, VALID)]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert data['statements'][0]['node'] == 'ModelDecl'
+    assert data['statements'][1]['node'] == 'ModelDecl'
 
 
-def test_ast_with_error(tmp_path: Path) -> None:
+def test_ast_does_not_need_valid_semantics(tmp_path: Path) -> None:
+    assert main(['ast', write(tmp_path, 'model m = rf')]) == 0
     assert main(['ast', write(tmp_path, 'oops')]) == 1
+    assert main(['ast', str(tmp_path / 'missing.eig')]) == 1
 
 
 def test_tokens(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    path = write(tmp_path, 'model m')
-    assert main(['tokens', path]) == 0
+    assert main(['tokens', write(tmp_path, 'model m')]) == 0
     assert capsys.readouterr().out.splitlines() == [
         '1:1\tKEYWORD\tmodel',
         '1:7\tIDENT\tm',
@@ -63,12 +68,69 @@ def test_tokens_with_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     assert main(['tokens', str(tmp_path / 'missing.eig')]) == 1
 
 
+def test_ir(examples_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(['ir', str(examples_dir / 'ml.eig')]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith('%0 = load csv("data/customers.csv")  # customers\n')
+    assert '%4 = evaluate %3 [accuracy, precision, recall, f1]  # churn' in out
+
+
+def test_ir_with_error(tmp_path: Path) -> None:
+    assert main(['ir', write(tmp_path, 'train m { target = y }')]) == 1
+
+
+def test_compile_to_stdout_and_file(
+    examples_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(['compile', str(examples_dir / 'ml.eig')]) == 0
+    code = capsys.readouterr().out
+    assert 'RandomForestClassifier(n_estimators=100, max_depth=8, random_state=42)' in code
+
+    output = tmp_path / 'ml.py'
+    assert main(['compile', str(examples_dir / 'ml.eig'), '-o', str(output)]) == 0
+    assert output.read_text() == code
+    assert capsys.readouterr().out == f'wrote {output}\n'
+
+
+def test_compile_unsupported_source(examples_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(['compile', str(examples_dir / 'pipeline.eig')]) == 1
+    assert 'cannot load bigquery sources yet' in capsys.readouterr().err
+
+
+def test_compile_with_semantic_error(tmp_path: Path) -> None:
+    assert main(['compile', write(tmp_path, 'model m = rf')]) == 1
+
+
+def test_run_trains_and_evaluates(examples_dir: Path, capfd: pytest.CaptureFixture[str]) -> None:
+    assert main(['run', str(examples_dir / 'ml.eig')]) == 0
+    out = capfd.readouterr().out
+    assert 'churn: random_forest classification, trained on 315 rows, validated on 79' in out
+    assert '  accuracy ' in out
+
+
+def test_run_reports_compile_errors(tmp_path: Path) -> None:
+    assert main(['run', write(tmp_path, 'model m = rf')]) == 1
+
+
+def test_run_without_runtime_dependencies(
+    examples_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    real_find_spec = importlib.util.find_spec
+
+    def find_spec(name: str) -> object:
+        return None if name == 'sklearn' else real_find_spec(name)
+
+    monkeypatch.setattr(importlib.util, 'find_spec', find_spec)
+    assert main(['run', str(examples_dir / 'ml.eig')]) == 1
+    assert 'pip install "eigrel[python]"' in capsys.readouterr().err
+
+
 def test_init_creates_a_project_that_checks(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     project = tmp_path / 'churn'
     assert main(['init', str(project)]) == 0
-    assert (project / 'data').is_dir()
+    assert (project / 'data' / 'customers.csv').is_file()
     assert main(['check', str(project / 'main.eig')]) == 0
     assert main(['init', str(project)]) == 1
     assert 'already exists' in capsys.readouterr().err
@@ -82,7 +144,7 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_python_dash_m(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr('sys.argv', ['eigrel', 'check', write(tmp_path, 'model m = rf')])
+    monkeypatch.setattr('sys.argv', ['eigrel', 'check', write(tmp_path, VALID)])
     with pytest.raises(SystemExit) as info:
         runpy.run_module('eigrel', run_name='__main__')
     assert info.value.code == 0
