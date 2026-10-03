@@ -2,7 +2,7 @@
 
 **A programming language for Data, Machine Learning and AI.**
 
-[![CI](https://github.com/thentsation/eigrel/actions/workflows/pipeline_python.yaml/badge.svg)](https://github.com/thentsation/eigrel/actions/workflows/pipeline_python.yaml)
+[![CI](https://github.com/thentsation/eigrel/actions/workflows/ci.yaml/badge.svg)](https://github.com/thentsation/eigrel/actions/workflows/ci.yaml)
 [![PyPI](https://img.shields.io/pypi/v/eigrel)](https://pypi.org/project/eigrel/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 

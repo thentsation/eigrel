@@ -1,15 +1,26 @@
-name: Notify Portfolio
+name: notify-portfolio
+
+# Asks the portfolio site to rebuild. Skips quietly when PORTFOLIO_DISPATCH_TOKEN is not set.
 
 on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   dispatch:
+    name: dispatch
     runs-on: ubuntu-latest
-
+    timeout-minutes: 5
     steps:
       - name: Trigger portfolio rebuild
         env:
           GH_TOKEN: ${{ secrets.PORTFOLIO_DISPATCH_TOKEN }}
-        run: gh api repos/ntsation/portfolio/dispatches -f event_type=rebuild
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "PORTFOLIO_DISPATCH_TOKEN is not set; skipping."
+            exit 0
+          fi
+          gh api repos/ntsation/portfolio/dispatches -f event_type=rebuild
