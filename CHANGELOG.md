@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v0.9.0 (2026-10-04)
+
+### Features
+
+- Eigrel mcp server and worked examples for agents
+  ([#15](https://github.com/thentsation/eigrel/pull/15),
+  [`9efaa46`](https://github.com/thentsation/eigrel/commit/9efaa460075b7b7c0835a6cb8dda1d3ffc12200c))
+
+
 ## v0.8.0 (2026-10-04)
 
 ### Features
