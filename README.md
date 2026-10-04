@@ -123,11 +123,12 @@ failing exit code for CI.
 
 ## Status
 
-Eigrel 0.9 reads CSV, Parquet, JSON, SQL databases and BigQuery, cleans missing values, trains
+Eigrel 1.0 reads CSV, Parquet, JSON, SQL databases and BigQuery, cleans missing values, trains
 scikit-learn, XGBoost or Spark MLlib models, scores new data with the training pipeline and
 registers models in MLflow, compiling the same program to Python, Spark or SQL. `eigrel plan`
-shows the consequences before anything runs, and `eigrel mcp` gives agents the whole loop. Next:
-1.0, with the grammar and JSON contracts frozen. See the [roadmap](docs/ROADMAP.md).
+shows the consequences before anything runs, and `eigrel mcp` gives agents the whole loop. The
+language, the CLI and the JSON outputs are stable: see [compatibility](docs/COMPATIBILITY.md) and
+the [roadmap](docs/ROADMAP.md).
 
 ## Getting started
 

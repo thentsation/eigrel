@@ -19,6 +19,7 @@ from eigrel.compiler.catalog import CAPABILITIES, handles_missing_values
 from eigrel.compiler.ir import format_expr
 from eigrel.compiler.tokens import Location
 from eigrel.probe import Column, Engine, ProbeError, count, engine_for, missing, value_counts
+from eigrel.runner import JSON_FORMAT
 
 Severity = Literal['error', 'warning', 'info']
 Backend = Literal['python', 'spark']
@@ -475,7 +476,12 @@ def state_document(plan: Plan) -> dict[str, Any]:
             'rows': rows,
             'fingerprint': fingerprint(dataset.columns),
         }
-    return {'eigrel': __version__, 'program': Path(plan.program).name, 'datasets': sources}
+    return {
+        'eigrel': __version__,
+        'format': JSON_FORMAT,
+        'program': Path(plan.program).name,
+        'datasets': sources,
+    }
 
 
 def save_state(plan: Plan) -> Path:
@@ -587,6 +593,7 @@ def to_json(plan: Plan) -> dict[str, Any]:
 
     return {
         'eigrel': __version__,
+        'format': JSON_FORMAT,
         'program': plan.program,
         'backend': plan.backend,
         'ok': plan.ok,

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/thentsation/eigrel/blob/main/docs/schemas/check.schema.json",
+  "title": "eigrel check --json",
+  "description": "Format 1. Fields may be added in 1.x; none is removed or changes meaning.",
+  "type": "object",
+  "required": ["eigrel", "format", "ok", "files"],
+  "properties": {
+    "eigrel": {"type": "string", "description": "Version of eigrel that produced the report."},
+    "format": {"const": 1},
+    "ok": {"type": "boolean", "description": "True when every file is valid."},
+    "files": {"type": "array", "items": {"$ref": "#/$defs/file"}}
+  },
+  "$defs": {
+    "file": {
+      "type": "object",
+      "required": ["path", "ok", "operations", "errors"],
+      "properties": {
+        "path": {"type": "string"},
+        "ok": {"type": "boolean"},
+        "operations": {"type": ["integer", "null"], "description": "IR operations, when valid."},
+        "errors": {"type": "array", "items": {"$ref": "#/$defs/error"}}
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["stage", "message"],
+      "properties": {
+        "stage": {"enum": ["io", "lex", "parse", "semantic", "usage"]},
+        "message": {"type": "string"},
+        "line": {"type": "integer", "minimum": 1},
+        "column": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}

@@ -109,6 +109,13 @@ follow Conventional Commits too: it decides whether a release happens.
 Release tags (`v*`) cannot be moved or deleted. Only the release workflow, through a deploy key,
 pushes to `main` directly.
 
+## Compatibility
+
+Eigrel is stable from 1.0; read [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) before changing the
+grammar, the CLI or any JSON output. JSON changes must update [docs/schemas](docs/schemas) (the
+contract tests validate real outputs against them). Adding a field is fine; removing or redefining
+one needs a new `format` and a major release.
+
 ## Commit messages
 
 Eigrel uses [Conventional Commits](https://www.conventionalcommits.org/); versions and the changelog

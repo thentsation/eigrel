@@ -238,6 +238,7 @@ def test_check_json_ok(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> No
     data = json.loads(capsys.readouterr().out)
     assert data == {
         'eigrel': __version__,
+        'format': 1,
         'ok': True,
         'files': [{'path': path, 'ok': True, 'operations': 1, 'errors': []}],
     }

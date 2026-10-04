@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/thentsation/eigrel/blob/main/docs/schemas/plan.schema.json",
+  "title": "eigrel plan --json",
+  "description": "Format 1. Fields may be added in 1.x; none is removed or changes meaning.",
+  "type": "object",
+  "required": [
+    "eigrel", "format", "program", "backend", "ok", "datasets", "trainings", "predictions",
+    "findings", "state"
+  ],
+  "properties": {
+    "eigrel": {"type": "string"},
+    "format": {"const": 1},
+    "program": {"type": "string"},
+    "backend": {"enum": ["python", "spark"]},
+    "ok": {"type": "boolean", "description": "False when any finding is an error."},
+    "datasets": {"type": "array", "items": {"$ref": "#/$defs/dataset"}},
+    "trainings": {"type": "array", "items": {"$ref": "#/$defs/training"}},
+    "predictions": {"type": "array", "items": {"$ref": "#/$defs/prediction"}},
+    "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "state": {
+      "type": "object",
+      "required": ["path", "exists"],
+      "properties": {"path": {"type": ["string", "null"]}, "exists": {"type": "boolean"}}
+    }
+  },
+  "$defs": {
+    "rows": {"type": ["integer", "null"], "minimum": 0, "description": "Null when not probed."},
+    "column": {
+      "type": "object",
+      "required": ["name", "type", "native"],
+      "properties": {
+        "name": {"type": "string"},
+        "type": {"enum": ["number", "string", "bool", "unknown"]},
+        "native": {"type": "string", "description": "The engine's own type name."}
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "required": ["name", "source", "probed", "columns", "steps"],
+      "properties": {
+        "name": {"type": "string"},
+        "source": {"type": "string"},
+        "probed": {"type": "boolean"},
+        "columns": {"type": ["array", "null"], "items": {"$ref": "#/$defs/column"}},
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["op", "rows", "columns"],
+            "properties": {
+              "op": {"type": "string"},
+              "rows": {"$ref": "#/$defs/rows"},
+              "columns": {"type": ["array", "null"], "items": {"type": "string"}},
+              "line": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
+    },
+    "training": {
+      "type": "object",
+      "required": [
+        "model", "algorithm", "task", "dataset", "target", "features", "rows", "train_rows",
+        "validation_rows", "stratified", "missing", "classes", "distinct", "time",
+        "train_period", "validation_period"
+      ],
+      "properties": {
+        "model": {"type": "string"},
+        "algorithm": {"type": "string"},
+        "task": {"enum": ["classification", "regression"]},
+        "dataset": {"type": "string"},
+        "target": {"type": "string"},
+        "features": {"type": ["array", "null"], "items": {"type": "string"}},
+        "rows": {"$ref": "#/$defs/rows"},
+        "train_rows": {"$ref": "#/$defs/rows"},
+        "validation_rows": {"$ref": "#/$defs/rows"},
+        "stratified": {"type": ["boolean", "null"]},
+        "missing": {"type": "object", "additionalProperties": {"type": "integer"}},
+        "classes": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "object",
+            "required": ["value", "rows"],
+            "properties": {"value": {}, "rows": {"type": "integer"}}
+          }
+        },
+        "distinct": {"type": ["integer", "null"]},
+        "time": {"type": ["string", "null"]},
+        "train_period": {"type": ["array", "null"], "minItems": 2, "maxItems": 2},
+        "validation_period": {"type": ["array", "null"], "minItems": 2, "maxItems": 2}
+      }
+    },
+    "prediction": {
+      "type": "object",
+      "required": ["model", "dataset", "rows", "output", "fills", "missing", "unseen"],
+      "properties": {
+        "model": {"type": "string"},
+        "dataset": {"type": "string"},
+        "rows": {"$ref": "#/$defs/rows"},
+        "output": {
+          "type": "object",
+          "required": ["format", "path"],
+          "properties": {"format": {"enum": ["csv", "parquet", "json"]}, "path": {"type": "string"}}
+        },
+        "fills": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["column", "value"],
+            "properties": {"column": {"type": "string"}, "value": {}}
+          }
+        },
+        "missing": {"type": "object", "additionalProperties": {"type": "integer"}},
+        "unseen": {"type": "object", "additionalProperties": {"type": "array"}}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": ["severity", "code", "message"],
+      "properties": {
+        "severity": {"enum": ["error", "warning", "info"]},
+        "code": {
+          "enum": [
+            "io", "lex", "parse", "semantic", "schema", "source", "probe", "not-probed",
+            "empty", "target-missing", "missing-values", "text-target", "one-class",
+            "capability", "continuous-target", "imbalance", "small-validation", "no-stratify",
+            "tiny", "time-missing", "random-split", "time-overlap", "unseen-categories",
+            "drift-removed", "drift-type", "drift-added", "drift-rows", "drift-new", "state"
+          ]
+        },
+        "message": {"type": "string"},
+        "line": {"type": "integer", "minimum": 1},
+        "column": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}
