@@ -230,3 +230,47 @@ def test_python_dash_m(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as info:
         runpy.run_module('eigrel', run_name='__main__')
     assert info.value.code == 0
+
+
+def test_check_json_ok(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = write(tmp_path, VALID)
+    assert main(['check', '--json', path]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data == {
+        'eigrel': __version__,
+        'ok': True,
+        'files': [{'path': path, 'ok': True, 'operations': 1, 'errors': []}],
+    }
+
+
+def test_check_json_reports_positioned_errors(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    good = write(tmp_path, VALID, 'good.eig')
+    bad = write(tmp_path, 'model m = rf', 'bad.eig')
+    broken = write(tmp_path, 'model m random_forest', 'broken.eig')
+    assert main(['check', '--json', bad, broken, good]) == 1
+    data = json.loads(capsys.readouterr().out)
+    assert data['eigrel'] == __version__
+    assert data['ok'] is False
+    semantic, parse, ok = data['files']
+    assert semantic['ok'] is False
+    assert semantic['errors'][0]['stage'] == 'semantic'
+    assert semantic['errors'][0]['message'].startswith("unknown algorithm 'rf'")
+    assert semantic['errors'][0]['line'] == 1
+    assert semantic['errors'][0]['column'] == 1
+    assert parse['ok'] is False
+    assert parse['errors'][0]['stage'] == 'parse'
+    assert parse['errors'][0]['line'] == 1
+    assert parse['errors'][0]['column'] == 9
+    assert ok == {'path': good, 'ok': True, 'operations': 1, 'errors': []}
+
+
+def test_check_json_missing_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    missing = str(tmp_path / 'nope.eig')
+    assert main(['check', '--json', missing]) == 1
+    data = json.loads(capsys.readouterr().out)
+    report = data['files'][0]
+    assert report['ok'] is False
+    assert report['errors'][0]['stage'] == 'io'
+    assert report['errors'][0]['message'].startswith(f'cannot read {missing}')
