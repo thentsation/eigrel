@@ -39,7 +39,7 @@ docker-build:
 	docker build -f docker/Dockerfile -t eigrel .
 
 docker-run:
-	docker run --rm -v $(CURDIR)/examples:/work eigrel run ml.eig
+	docker run --rm --user "$$(id -u):$$(id -g)" -v $(CURDIR)/examples:/work eigrel run ml.eig
 
 clean:
 	find . -type d -name __pycache__ -not -path './$(VENV)/*' -exec rm -rf {} +

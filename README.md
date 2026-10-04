@@ -124,10 +124,18 @@ SELECT `age`, `income`, `country` FROM `project.dataset.users` WHERE ((`age` > 1
 
 ### Docker
 
+The image on GitHub Container Registry (`linux/amd64` and `linux/arm64`) includes the `python` and
+`sql` extras. Mount your project at `/work` and run as your own user, so the container can read your
+files and anything it writes stays yours:
+
 ```bash
-make docker-build
-make docker-run      # runs examples/ml.eig inside the container
+alias eigrel='docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" ghcr.io/thentsation/eigrel'
+eigrel init churn
+eigrel run churn/main.eig
 ```
+
+Paths must be inside the current directory, since only it is mounted. To build the image locally,
+use `make docker-build` and `make docker-run`.
 
 ## Language
 
