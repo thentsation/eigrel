@@ -92,9 +92,21 @@ def test_compile_to_stdout_and_file(
     assert capsys.readouterr().out == f'wrote {output}\n'
 
 
-def test_compile_unsupported_source(examples_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(['compile', str(examples_dir / 'pipeline.eig')]) == 1
-    assert 'cannot load bigquery sources yet' in capsys.readouterr().err
+def test_compile_to_sql(examples_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(['compile', '--target', 'sql', str(examples_dir / 'pipeline.eig')]) == 0
+    out = capsys.readouterr().out
+    assert '-- dataset users (bigquery, bigquery dialect)' in out
+    assert 'FROM `project.dataset.users` WHERE ((`age` > 18) AND (`income` <> 0));' in out
+
+
+def test_run_names_the_missing_extra(
+    examples_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # google-cloud-bigquery is not a test dependency, so the BigQuery example cannot run.
+    assert main(['run', str(examples_dir / 'pipeline.eig')]) == 1
+    err = capsys.readouterr().err
+    assert 'running needs google.cloud.bigquery, db_dtypes' in err
+    assert 'pip install "eigrel[bigquery]"' in err
 
 
 def test_compile_with_semantic_error(tmp_path: Path) -> None:
@@ -112,6 +124,13 @@ def test_run_reports_compile_errors(tmp_path: Path) -> None:
     assert main(['run', write(tmp_path, 'model m = rf')]) == 1
 
 
+def test_run_reads_a_sql_database(examples_dir: Path, capfd: pytest.CaptureFixture[str]) -> None:
+    assert main(['run', str(examples_dir / 'sql.eig')]) == 0
+    assert (
+        'churn: logistic_regression classification, trained on 300 rows' in capfd.readouterr().out
+    )
+
+
 def test_run_without_runtime_dependencies(
     examples_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -122,7 +141,9 @@ def test_run_without_runtime_dependencies(
 
     monkeypatch.setattr(importlib.util, 'find_spec', find_spec)
     assert main(['run', str(examples_dir / 'ml.eig')]) == 1
-    assert 'pip install "eigrel[python]"' in capsys.readouterr().err
+    assert 'running needs sklearn; install them with: pip install "eigrel[python]"' in (
+        capsys.readouterr().err
+    )
 
 
 def test_init_creates_a_project_that_checks(

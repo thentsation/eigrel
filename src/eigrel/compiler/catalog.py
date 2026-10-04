@@ -9,8 +9,27 @@ from typing import Literal
 from eigrel.compiler.ir import Task
 
 ParamKind = Literal['int', 'number']
+# path: a file path; url: a database URL, literal or env("VAR"); table: a database table, optionally
+# schema-qualified; bigquery_table: a fully qualified project.dataset.table.
+SourceArgKind = Literal['path', 'url', 'table', 'bigquery_table']
 
-SOURCES = ('csv', 'parquet', 'bigquery')
+
+@dataclass(frozen=True)
+class Source:
+    args: tuple[tuple[str, SourceArgKind], ...]
+    example: str
+
+
+SOURCES: dict[str, Source] = {
+    'csv': Source((('path', 'path'),), 'csv("data/customers.csv")'),
+    'parquet': Source((('path', 'path'),), 'parquet("data/customers.parquet")'),
+    'json': Source((('path', 'path'),), 'json("data/customers.jsonl")'),
+    'sql': Source(
+        (('connection URL', 'url'), ('table', 'table')),
+        'sql(env("DATABASE_URL"), "customers")',
+    ),
+    'bigquery': Source((('table', 'bigquery_table'),), 'bigquery("project.dataset.table")'),
+}
 
 
 @dataclass(frozen=True)

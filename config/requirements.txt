@@ -1,3 +1,5 @@
-# Runtime of the Python backend (`eigrel run`); mirrors the `python` extra in pyproject.toml.
+# Runtime used by the Docker image and CI; mirrors the `python` and `sql` extras in pyproject.toml.
 pandas>=3.0,<3.1
 scikit-learn>=1.9,<1.10
+pyarrow>=25,<26
+sqlalchemy>=2.1,<2.2

@@ -1,0 +1,23 @@
+# Read customers from a SQL database, then train a churn model.
+# Any SQLAlchemy URL works; keep real credentials out of the code with
+# sql(env("DATABASE_URL"), "customers").
+# `eigrel compile --target sql sql.eig` shows the query for the data part.
+
+dataset customers from sql("sqlite:///data/customers.db", "customers")
+
+transform customers {
+    filter age >= 18 and purchases > 0
+    select age, income, purchases, churned
+}
+
+model churn = logistic_regression {
+    max_iter = 1000
+}
+
+train churn {
+    target = churned
+}
+
+evaluate churn {
+    metrics = [accuracy, f1, auc]
+}

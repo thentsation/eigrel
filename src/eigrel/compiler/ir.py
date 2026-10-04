@@ -8,8 +8,10 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from eigrel.compiler import ast
+from eigrel.compiler.tokens import Location
 
 Task = Literal['classification', 'regression']
+_NOWHERE = Location(0, 0)
 Value = int | float | str | bool
 
 
@@ -21,9 +23,19 @@ class Op:
 
 
 @dataclass(frozen=True)
+class EnvVar:
+    """A value read from an environment variable when the program runs, e.g. a database URL."""
+
+    name: str
+
+
+SourceArg = str | EnvVar
+
+
+@dataclass(frozen=True)
 class Load(Op):
     format: str
-    path: str
+    args: tuple[SourceArg, ...]
 
 
 @dataclass(frozen=True)
@@ -93,13 +105,20 @@ def format_expr(expr: ast.Expr) -> str:
     raise AssertionError(f'unknown expression {expr!r}')  # pragma: no cover
 
 
+def _format_source_arg(arg: SourceArg) -> str:
+    if isinstance(arg, EnvVar):
+        return f'env("{arg.name}")'
+    return format_expr(ast.StringLiteral(arg, loc=_NOWHERE))
+
+
 def format_graph(graph: Graph) -> str:
     """Text form of the IR, one operation per line."""
     lines = []
     for op in graph.ops:
         match op:
             case Load():
-                body = f'load {op.format}("{op.path}")'
+                args = ', '.join(_format_source_arg(arg) for arg in op.args)
+                body = f'load {op.format}({args})'
             case Filter():
                 body = f'filter %{op.input} {format_expr(op.condition)}'
             case Select():
