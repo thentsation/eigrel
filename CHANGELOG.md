@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v0.6.0 (2026-10-04)
+
+### Features
+
+- Eigrel v0.5 data cleaning, XGBoost and MLflow
+  ([#10](https://github.com/thentsation/eigrel/pull/10),
+  [`3038207`](https://github.com/thentsation/eigrel/commit/30382074dcff3355a62cf821ca9a6774faaf5f64))
+
+
 ## v0.4.0 (2026-10-04)
 
 ### Documentation
