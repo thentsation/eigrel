@@ -1,7 +1,7 @@
 # Mistakes the compiler catches
 
-Every program below is in [`examples/mistakes`](../examples/mistakes) and a test keeps this page honest:
-if the compiler stops rejecting it, CI fails. `check` needs no data; `plan` reads the real columns, types and rows.
+Every program below is in [`examples/mistakes`](../examples/mistakes) and a test runs each one: if the
+compiler stops rejecting it, CI fails. `check` needs no data; `plan` reads the real columns, types and rows.
 
 ## Target leakage
 
@@ -14,6 +14,52 @@ error: target 'churned' is also declared as a feature of 'customers'
    |
 26 |     target = churned
    |              ^
+```
+
+## The target under another name
+
+A column that is a copy of the target. The compiler cannot know from the program, but `plan` reads the data and sees the two columns are identical in every row. A notebook trains happily and reports a perfect score.
+
+```text
+$ eigrel plan examples/mistakes/duplicate_of_target.eig
+Plan for examples/mistakes/duplicate_of_target.eig (python backend)
+
+dataset accounts ← csv("../data/accounts.csv")
+  columns: account_id bigint, age bigint, income double, tenure bigint, churned bigint, churn_flag bigint
+  rows: 200
+  fill income = 0                              200 rows
+
+train churn: random_forest classification on accounts
+  split: 160 train / 40 validation (20%, stratified)
+  features: age, income, tenure, churn_flag
+  target churned: 0 139 (70%), 1 61 (30%)
+  missing values: none
+
+✗ error: line 26: feature 'churn_flag' is identical to the target 'churned' in every row; the model would just read the answer
+1 error(s), 0 warning(s)
+```
+
+## A row identifier used as a feature
+
+`account_id` is different in every row, so a tree model can memorise it: great training numbers, nothing learned that carries over. A warning, so `--strict` is what fails CI.
+
+```text
+$ eigrel plan --strict examples/mistakes/id_feature.eig
+Plan for examples/mistakes/id_feature.eig (python backend)
+
+dataset accounts ← csv("../data/accounts.csv")
+  columns: account_id bigint, age bigint, income double, tenure bigint, churned bigint, churn_flag bigint
+  rows: 200
+
+train churn: random_forest classification on accounts
+  split: 160 train / 40 validation (20%, stratified)
+  features: account_id, age, tenure
+  target churned: 0 139 (70%), 1 61 (30%)
+  missing values: none
+
+! warning: line 21: feature 'account_id' is different in every row; it identifies rows instead of describing them, so the model can memorise it. Leave it out of features
+0 error(s), 1 warning(s)
+state: no id_feature.eigstate yet; `eigrel plan --save` records the data schema so later plans can detect drift
 ```
 
 ## A column an earlier step dropped
@@ -79,7 +125,7 @@ $ eigrel plan examples/mistakes/missing_values.eig
 Plan for examples/mistakes/missing_values.eig (python backend)
 
 dataset accounts ← csv("../data/accounts.csv")
-  columns: account_id bigint, age bigint, income double, tenure bigint, churned bigint
+  columns: account_id bigint, age bigint, income double, tenure bigint, churned bigint, churn_flag bigint
   rows: 200
 
 train churn: logistic_regression classification on accounts

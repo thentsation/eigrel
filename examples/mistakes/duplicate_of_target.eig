@@ -1,0 +1,28 @@
+# The target under another name.
+#
+# `churn_flag` is a copy of `churned`, exported by the same system. Nothing in the program says so,
+# so the compiler cannot know; the plan reads the data, sees the two columns are identical in every
+# row, and refuses. A notebook trains happily and reports a perfect score:
+#
+#   eigrel plan examples/mistakes/duplicate_of_target.eig
+
+dataset accounts from csv("../data/accounts.csv")
+
+transform accounts {
+    fill income = 0
+}
+
+features accounts {
+    age
+    income
+    tenure
+    churn_flag
+}
+
+model churn = random_forest {
+    trees = 100
+}
+
+train churn {
+    target = churned
+}

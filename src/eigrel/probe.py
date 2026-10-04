@@ -208,3 +208,33 @@ def value_counts(
     )
     (distinct,) = engine.rows(f'SELECT COUNT(DISTINCT {name}) FROM ({query}) AS probe')[0]
     return [(value, int(n)) for value, n in top], int(distinct)
+
+
+def _quoted(column: str, quote: str) -> str:
+    return f'{quote}{column.replace(quote, quote * 2)}{quote}'
+
+
+def distinct_counts(
+    engine: Engine, query: str, columns: Sequence[str], quote: str
+) -> dict[str, int]:
+    """Distinct non-missing values per column."""
+    if not columns:
+        return {}
+    parts = ', '.join(f'COUNT(DISTINCT {_quoted(c, quote)})' for c in columns)
+    values = engine.rows(f'SELECT {parts} FROM ({query}) AS probe')[0]
+    return {column: int(value) for column, value in zip(columns, values, strict=True)}
+
+
+def equal_to(
+    engine: Engine, query: str, columns: Sequence[str], other: str, quote: str
+) -> dict[str, int]:
+    """For each column, in how many rows it holds the same value as `other`."""
+    if not columns:
+        return {}
+    target = _quoted(other, quote)
+    parts = ', '.join(
+        f'COALESCE(SUM(CASE WHEN {_quoted(c, quote)} = {target} THEN 1 ELSE 0 END), 0)'
+        for c in columns
+    )
+    values = engine.rows(f'SELECT {parts} FROM ({query}) AS probe')[0]
+    return {column: int(value) for column, value in zip(columns, values, strict=True)}

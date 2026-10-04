@@ -25,7 +25,7 @@ does around it.
 | 0.5 – 0.6 | ML | `fill`, `drop_missing`, XGBoost, MLflow `register`, leak-free encoding pipeline, Spark parity, `check --json`, [`llms.txt`](../llms.txt) |
 | 0.7 | Plan | `eigrel plan`: schema inference, schema contracts, row counts, class balance, findings with codes, `--json`, `.eigstate` with drift detection |
 
-Since 0.7: `eigrel mcp` (an MCP server exposing check, plan, compile and ir to agents), a GitHub
+Since 0.7: `plan` flags features that copy the target, identify rows or are constant; `eigrel mcp` (an MCP server exposing check, plan, compile and ir to agents), a GitHub
 Action and a pre-commit hook, and the [mistakes gallery](MISTAKES.md).
 
 ## Next

@@ -1,0 +1,23 @@
+# A row identifier used as a feature.
+#
+# `account_id` is different in every row. A tree model can memorise it, so training looks great and
+# the model learns nothing that carries over to new accounts. The plan sees that the column is
+# unique and says so; with --strict this fails CI:
+#
+#   eigrel plan --strict examples/mistakes/id_feature.eig
+
+dataset accounts from csv("../data/accounts.csv")
+
+features accounts {
+    account_id
+    age
+    tenure
+}
+
+model churn = random_forest {
+    trees = 100
+}
+
+train churn {
+    target = churned
+}

@@ -25,11 +25,13 @@ def test_mistakes_are_rejected_where_the_readme_says(
 
 # example -> (command, exit code, text the diagnostic must contain)
 MISTAKES = {
-    'unknown_column': ('check', 1, "column 'income' does not exist here"),
-    'wrong_metric': ('check', 1, "metric 'rmse' is for regression"),
-    'evaluate_before_train': ('check', 1, 'must be trained before it is evaluated'),
-    'type_mismatch': ('plan', 1, 'cannot compare a number with a string'),
-    'missing_values': ('plan', 1, 'cannot be trained with logistic_regression: income (27)'),
+    'unknown_column': (['check'], 1, "column 'income' does not exist here"),
+    'wrong_metric': (['check'], 1, "metric 'rmse' is for regression"),
+    'evaluate_before_train': (['check'], 1, 'must be trained before it is evaluated'),
+    'type_mismatch': (['plan'], 1, 'cannot compare a number with a string'),
+    'missing_values': (['plan'], 1, 'cannot be trained with logistic_regression: income (27)'),
+    'duplicate_of_target': (['plan'], 1, "'churn_flag' is identical to the target 'churned'"),
+    'id_feature': (['plan', '--strict'], 2, "feature 'account_id' is different in every row"),
 }
 
 
@@ -38,7 +40,7 @@ def test_every_mistake_in_the_gallery_is_rejected(
     name: str, examples_dir: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     command, code, message = MISTAKES[name]
-    assert main([command, str(examples_dir / 'mistakes' / f'{name}.eig')]) == code
+    assert main([*command, str(examples_dir / 'mistakes' / f'{name}.eig')]) == code
     captured = capsys.readouterr()
     assert message in captured.out + captured.err
 

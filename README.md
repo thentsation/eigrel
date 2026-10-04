@@ -107,9 +107,10 @@ plans report drift (removed columns, changed types, row counts). `--json` gives 
 tools and agents, `--target spark` applies Spark's limits, and `--strict` turns warnings into a
 failing exit code for CI.
 
-More of what the compiler and the plan catch, with the exact output, is in
-[**Mistakes the compiler catches**](docs/MISTAKES.md): dropped columns, metrics for the wrong task,
-filters that compare a number with text, training on columns with gaps.
+The plan also reads the data to catch what no program text can show: a feature that is a copy of the
+target under another name, a row identifier used as a feature, a constant column. More, with the
+exact output, in [**Mistakes the compiler catches**](docs/MISTAKES.md): dropped columns, metrics for
+the wrong task, filters that compare a number with text, training on columns with gaps.
 
 ## Why a language, and why not just a library
 

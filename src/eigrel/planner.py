@@ -7,6 +7,7 @@ what every step will do to it, and flags what would go wrong. Nothing is trained
 import hashlib
 import json
 import math
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,7 +18,17 @@ from eigrel.backends import sql
 from eigrel.compiler import EigrelError, analyze, ir, parse
 from eigrel.compiler.ir import format_expr
 from eigrel.compiler.tokens import Location
-from eigrel.probe import Column, Engine, ProbeError, count, engine_for, missing, value_counts
+from eigrel.probe import (
+    Column,
+    Engine,
+    ProbeError,
+    count,
+    distinct_counts,
+    engine_for,
+    equal_to,
+    missing,
+    value_counts,
+)
 
 Severity = Literal['error', 'warning', 'info']
 Backend = Literal['python', 'spark']
@@ -29,6 +40,7 @@ IMBALANCE = 0.10
 MIN_VALIDATION_ROWS_PER_CLASS = 5
 CONTINUOUS_DISTINCT = 20
 TINY_TRAINING_SET = 30
+MIN_ROWS_FOR_ID_CHECK = 30
 ROW_DRIFT = 0.5
 
 
@@ -77,6 +89,8 @@ class TrainPlan:
     stratified: bool | None = None
     features: tuple[str, ...] | None = None
     missing: dict[str, int] = field(default_factory=dict)
+    distinct_values: dict[str, int] = field(default_factory=dict)
+    same_as_target: dict[str, int] = field(default_factory=dict)
     classes: list[tuple[Any, int]] | None = None
     distinct: int | None = None
 
@@ -205,11 +219,16 @@ def _train(
     if engine is None:
         return
     quote = sql.dialect_for(_load_of(graph, op.input)).quote
+    types = {c.name: c.type for c in known or ()}
     try:
         query = _query(graph, op.input, schemas)
         train.rows = count(engine, query)
         involved = [*(train.features or ()), op.target]
         train.missing = missing(engine, query, involved, quote)
+        features = [c for c in train.features or () if c != op.target]
+        train.distinct_values = distinct_counts(engine, query, features, quote)
+        comparable = [c for c in features if types.get(c) == types.get(op.target) != 'unknown']
+        train.same_as_target = equal_to(engine, query, comparable, op.target, quote)
         if op.task == 'classification':
             train.classes, train.distinct = value_counts(engine, query, op.target, quote)
     except ProbeError as exc:
@@ -219,7 +238,6 @@ def _train(
     rows = train.rows
     train.validation_rows = math.ceil(rows * op.validation)
     train.train_rows = rows - train.validation_rows
-    types = {c.name: c.type for c in known or ()}
     _check_training(plan, train, types)
 
 
@@ -260,6 +278,7 @@ def _check_training(plan: Plan, train: TrainPlan, types: Mapping[str, str]) -> N
             f"regression needs a numeric target, but '{op.target}' is text",
             op.loc,
         )
+    _check_features(plan, train, types)
     if op.task != 'classification' or not train.classes:
         return
     distinct = train.distinct or 0
@@ -317,6 +336,50 @@ def _check_training(plan: Plan, train: TrainPlan, types: Mapping[str, str]) -> N
             f' ({op.validation:.0%}); its metrics will be unstable',
             op.loc,
         )
+
+
+IDENTIFIER_NAME = re.compile(r'(^|_)(id|uuid|guid|key)($|_)|[a-z](Id|ID|Uuid|Guid)$', re.ASCII)
+
+
+def _is_identifier_name(name: str) -> bool:
+    """Whether a numeric column is named like a row identifier: id, customer_id, customerId."""
+    return IDENTIFIER_NAME.search(name) is not None or name.lower() in ('id', 'uuid', 'guid')
+
+
+def _check_features(plan: Plan, train: TrainPlan, types: Mapping[str, str]) -> None:
+    """Features that cannot help: copies of the target, row identifiers and constants."""
+    op = train.op
+    rows = train.rows or 0
+    for column, same in train.same_as_target.items():
+        if rows and same == rows:
+            plan.add(
+                'error',
+                'duplicate-of-target',
+                f"feature '{column}' is identical to the target '{op.target}' in every row;"
+                ' the model would just read the answer',
+                op.loc,
+            )
+    for column, distinct in train.distinct_values.items():
+        gaps = train.missing.get(column, 0)
+        if distinct <= 1 and rows - gaps > 0:
+            plan.add(
+                'warning',
+                'constant-feature',
+                f"feature '{column}' has the same value in every row and carries no information",
+                op.loc,
+            )
+        elif (
+            rows >= MIN_ROWS_FOR_ID_CHECK
+            and distinct == rows - gaps
+            and (types.get(column) == 'string' or _is_identifier_name(column))
+        ):
+            plan.add(
+                'warning',
+                'id-feature',
+                f"feature '{column}' is different in every row; it identifies rows instead of"
+                ' describing them, so the model can memorise it. Leave it out of features',
+                op.loc,
+            )
 
 
 # State and drift

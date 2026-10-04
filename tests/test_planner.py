@@ -58,7 +58,12 @@ def test_plan_of_the_example_matches_the_run(examples_dir: Path) -> None:
 def test_missing_values_imbalance_and_small_validation(tmp_path: Path) -> None:
     leads(tmp_path)
     plan = build_plan(program(tmp_path, PIPELINE.format(algorithm='logistic_regression')))
-    assert codes(plan.findings) == ['missing-values', 'imbalance', 'small-validation']
+    assert codes(plan.findings) == [
+        'missing-values',
+        'id-feature',
+        'imbalance',
+        'small-validation',
+    ]
     assert not plan.ok
     error = plan.findings[0]
     assert error.loc is not None and error.loc.line == 4
@@ -67,7 +72,7 @@ def test_missing_values_imbalance_and_small_validation(tmp_path: Path) -> None:
 
     # scikit-learn trees handle missing values, so only the warnings remain.
     plan = build_plan(program(tmp_path, PIPELINE.format(algorithm='random_forest')))
-    assert plan.ok and codes(plan.findings) == ['imbalance', 'small-validation']
+    assert plan.ok and codes(plan.findings) == ['id-feature', 'imbalance', 'small-validation']
 
     # On Spark, VectorAssembler rejects nulls for every algorithm.
     plan = build_plan(program(tmp_path, PIPELINE.format(algorithm='random_forest')), 'spark')
@@ -221,12 +226,12 @@ def test_known_schema_lets_sqlite_probe_fills(tmp_path: Path, examples_dir: Path
         program(
             tmp_path,
             'dataset c from sql("sqlite:///customers.db", "customers")\n'
-            'transform c { fill income = 0\n drop_missing }\n'
+            'transform c { fill income = 0\n drop_missing\n select age, income, churned }\n'
             'model m = random_forest\ntrain m { target = churned }\n',
         )
     )
     assert plan.ok and not plan.findings
-    assert [s.rows for s in plan.datasets[0].steps] == [400, 400, 400]
+    assert [s.rows for s in plan.datasets[0].steps] == [400, 400, 400, 400]
 
 
 def test_state_and_drift(tmp_path: Path) -> None:
@@ -272,7 +277,7 @@ def test_json_output_and_exit_codes(tmp_path: Path, capsys: pytest.CaptureFixtur
     }
     training = data['trainings'][0]
     assert training['classes'][0] == {'value': 'basic', 'rows': 124}
-    assert {f['code'] for f in data['findings']} == {'imbalance', 'small-validation'}
+    assert {f['code'] for f in data['findings']} == {'id-feature', 'imbalance', 'small-validation'}
     assert data['findings'][0]['line'] == 4
 
     bad = program(tmp_path, PIPELINE.format(algorithm='logistic_regression'), 'bad.eig')
@@ -403,3 +408,38 @@ def test_ascii_fallback_for_limited_encodings(examples_dir: Path) -> None:
     assert '400 -> 394 rows' in text and 'ok no problems found' in text
     text.encode('cp1252')
     assert render_for(plan, 'no-such-codec').isascii()
+
+
+def test_features_that_cannot_help(tmp_path: Path) -> None:
+    rows = [f'{i},{i % 5},{i % 2},7,{"a" if i % 3 else "b"},{i % 2}' for i in range(60)]
+    (tmp_path / 'f.csv').write_text('customer_id,age,flag,const,name,churned\n' + '\n'.join(rows))
+    plan = build_plan(
+        program(
+            tmp_path,
+            'dataset f from csv("f.csv")\n'
+            'features f { customer_id\n age\n flag\n const\n name }\n'
+            'model m = random_forest\ntrain m { target = churned }\n',
+        )
+    )
+    found = {(f.code, f.message.split("'")[1]) for f in plan.findings}
+    assert found == {
+        ('id-feature', 'customer_id'),
+        ('constant-feature', 'const'),
+        ('duplicate-of-target', 'flag'),
+    }
+    assert not plan.ok
+    assert plan.trains[0].distinct_values['const'] == 1
+
+
+def test_unique_values_are_only_identifiers_when_named_or_typed_like_one(tmp_path: Path) -> None:
+    (tmp_path / 'u.csv').write_text(
+        'income,email,y\n' + ''.join(f'{1000 + i * 7},u{i}@x.com,{i % 2}\n' for i in range(60))
+    )
+    plan = build_plan(
+        program(
+            tmp_path,
+            'dataset u from csv("u.csv")\nmodel m = random_forest\ntrain m { target = y }\n',
+        )
+    )
+    # A unique number can be a legitimate measurement; a unique text column never is.
+    assert [(f.code, f.message.split("'")[1]) for f in plan.findings] == [('id-feature', 'email')]

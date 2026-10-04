@@ -22,7 +22,8 @@ Verify-before-run loop for generating Eigrel programs:
    it re-checks the program against the actual column names and types, counts the rows every
    step keeps, and returns `findings[]`, each with a `severity` (`error`, `warning`, `info`), a
    stable `code` (e.g. `schema`, `target-missing`, `missing-values`, `imbalance`,
-   `small-validation`, `drift-removed`) and the `line` it concerns. Errors predict a failed run:
+   `small-validation`, `duplicate-of-target`, `id-feature`, `constant-feature`,
+   `drift-removed`) and the `line` it concerns. Errors predict a failed run:
    fix them. Warnings are judgement calls to report to the human.
 5. Then:
    - `eigrel compile FILE.eig` prints the generated Python (add `--target spark|sql`),
