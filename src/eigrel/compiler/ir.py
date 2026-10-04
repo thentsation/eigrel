@@ -51,6 +51,19 @@ class Select(Op):
 
 
 @dataclass(frozen=True)
+class Fill(Op):
+    input: int
+    values: tuple[tuple[str, Value], ...]
+
+
+@dataclass(frozen=True)
+class DropMissing(Op):
+    input: int
+    # None means rows with a missing value in any column.
+    columns: tuple[str, ...] | None
+
+
+@dataclass(frozen=True)
 class Train(Op):
     input: int
     algorithm: str
@@ -67,6 +80,15 @@ class Train(Op):
 class Evaluate(Op):
     model: int
     metrics: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Register(Op):
+    model: int
+    registered_name: str
+    experiment: str | None
+    # The latest evaluation of the model before it is registered, whose metrics are logged.
+    evaluation: int | None
 
 
 @dataclass
@@ -105,6 +127,15 @@ def format_expr(expr: ast.Expr) -> str:
     raise AssertionError(f'unknown expression {expr!r}')  # pragma: no cover
 
 
+def format_value(value: Value) -> str:
+    """Render a literal value in Eigrel syntax."""
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    if isinstance(value, str):
+        return format_expr(ast.StringLiteral(value, loc=_NOWHERE))
+    return repr(value)
+
+
 def _format_source_arg(arg: SourceArg) -> str:
     if isinstance(arg, EnvVar):
         return f'env("{arg.name}")'
@@ -123,6 +154,14 @@ def format_graph(graph: Graph) -> str:
                 body = f'filter %{op.input} {format_expr(op.condition)}'
             case Select():
                 body = f'select %{op.input} [{", ".join(op.columns)}]'
+            case Fill():
+                values = ', '.join(
+                    f'{column} = {format_value(value)}' for column, value in op.values
+                )
+                body = f'fill %{op.input} [{values}]'
+            case DropMissing():
+                columns = 'any column' if op.columns is None else ', '.join(op.columns)
+                body = f'drop_missing %{op.input} [{columns}]'
             case Train():
                 params = ', '.join(f'{key}={value!r}' for key, value in op.params)
                 features = 'all but target' if op.features is None else ', '.join(op.features)
@@ -133,6 +172,12 @@ def format_graph(graph: Graph) -> str:
                 )
             case Evaluate():
                 body = f'evaluate %{op.model} [{", ".join(op.metrics)}]'
+            case Register():
+                body = f'register %{op.model} as {format_value(op.registered_name)}'
+                if op.experiment is not None:
+                    body += f' experiment={format_value(op.experiment)}'
+                if op.evaluation is not None:
+                    body += f' metrics=%{op.evaluation}'
             case _:  # pragma: no cover
                 raise AssertionError(f'unknown op {op!r}')
         lines.append(f'%{op.id} = {body}  # {op.name}')

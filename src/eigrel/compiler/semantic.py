@@ -41,6 +41,8 @@ class Model:
     params: tuple[tuple[str, ir.Value], ...]
     trained: int | None = None
     train_loc: Location | None = None
+    evaluated: int | None = None
+    register_loc: Location | None = None
 
 
 @dataclass
@@ -67,6 +69,8 @@ class Analyzer:
                     self._train(statement)
                 case ast.EvaluateStmt():
                     self._evaluate(statement)
+                case ast.RegisterStmt():
+                    self._register(statement)
         return self.graph
 
     # Statements
@@ -140,6 +144,24 @@ class Analyzer:
                         ir.Select(self.graph.next_id(), decl.dataset, dataset.op, columns)
                     )
                     dataset.columns = columns
+                case ast.FillOp():
+                    values = []
+                    for param in op.values:
+                        self._check_column(param.name, param.loc, dataset)
+                        values.append((param.name, self._literal(param.value)))
+                    _unique(
+                        [column for column, _ in values],
+                        [ast.Name(p.name, loc=p.loc) for p in op.values],
+                        'column',
+                    )
+                    dataset.op = self.graph.add(
+                        ir.Fill(self.graph.next_id(), decl.dataset, dataset.op, tuple(values))
+                    )
+                case ast.DropMissingOp():
+                    dropped = self._columns(op.columns, dataset) if op.columns else None
+                    dataset.op = self.graph.add(
+                        ir.DropMissing(self.graph.next_id(), decl.dataset, dataset.op, dropped)
+                    )
 
     def _features(self, decl: ast.FeaturesDecl) -> None:
         dataset = self._dataset_named(decl.dataset, decl.loc)
@@ -258,7 +280,35 @@ class Analyzer:
                         name.loc,
                     )
             metrics = _unique([name.value for name in names], names, 'metric')
-        self.graph.add(ir.Evaluate(self.graph.next_id(), stmt.model, model.trained, metrics))
+        model.evaluated = self.graph.add(
+            ir.Evaluate(self.graph.next_id(), stmt.model, model.trained, metrics)
+        )
+
+    def _register(self, stmt: ast.RegisterStmt) -> None:
+        model = self._model_named(stmt.model, stmt.loc)
+        if model.trained is None:
+            raise SemanticError(
+                f"model '{stmt.model}' must be trained before it is registered", stmt.loc
+            )
+        if model.register_loc is not None:
+            raise SemanticError(
+                f"model '{stmt.model}' is already registered at line {model.register_loc.line}",
+                stmt.loc,
+            )
+        params = self._params(stmt.params, ('name', 'experiment'), 'register')
+        name = self._text(params['name']) if 'name' in params else stmt.model
+        experiment = self._text(params['experiment']) if 'experiment' in params else None
+        self.graph.add(
+            ir.Register(
+                self.graph.next_id(),
+                stmt.model,
+                model.trained,
+                name,
+                experiment,
+                model.evaluated,
+            )
+        )
+        model.register_loc = stmt.loc
 
     # Tasks
 
@@ -427,6 +477,22 @@ class Analyzer:
             return sign * value.value
         kind = 'an integer' if integer else 'a number'
         raise SemanticError(f"'{param.name}' must be {kind}", param.value.loc)
+
+    def _literal(self, expr: ast.Expr) -> ir.Value:
+        """A constant: a number (possibly negative), string or boolean."""
+        match expr:
+            case ast.IntLiteral(value=v) | ast.FloatLiteral(value=v):
+                return v
+            case ast.StringLiteral(value=v) | ast.BoolLiteral(value=v):
+                return v
+            case ast.Unary(op='-', operand=ast.IntLiteral(value=v) | ast.FloatLiteral(value=v)):
+                return -v
+        raise SemanticError('fill values must be constants, e.g. 0, "unknown" or false', expr.loc)
+
+    def _text(self, param: ast.Param) -> str:
+        if not isinstance(param.value, ast.StringLiteral) or not param.value.value:
+            raise SemanticError(f"'{param.name}' must be a non-empty string", param.value.loc)
+        return param.value.value
 
     def _positive_number(self, param: ast.Param, integer: bool) -> int | float:
         value = self._number(param, integer)
