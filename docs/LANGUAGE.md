@@ -1,4 +1,4 @@
-# Eigrel language reference (v0.3)
+# Eigrel language reference (v0.4)
 
 This describes the syntax the parser accepts and the rules the compiler checks before generating
 code. Every rule below is reported at compile time, with the line and column of the problem.
@@ -144,6 +144,28 @@ rmse and r2.
 | regression | `mae`, `mse`, `rmse`, `r2` |
 
 Precision, recall and f1 use the binary average for 0/1 targets and the weighted average otherwise.
+
+## Spark backend
+
+`eigrel run --target spark` and `eigrel compile --target spark` produce a PySpark script that trains
+with Spark MLlib. It runs locally (`local[*]`) or under `spark-submit` on a cluster.
+
+| Eigrel | Spark |
+|---|---|
+| `csv`, `parquet`, `json` | `spark.read` (CSV with header and schema inference; `.json` as multi-line JSON) |
+| `sql(url, table)` | JDBC; the SQLAlchemy URL is converted at run time and the driver for PostgreSQL, MySQL, MariaDB or SQLite is downloaded from Maven Central |
+| `bigquery(table)` | the spark-bigquery connector (downloaded from Maven Central) |
+| `random_forest`, `decision_tree` | `RandomForest*`, `DecisionTree*` (`trees` → `numTrees`, `max_depth` → `maxDepth`, `min_samples_leaf` → `minInstancesPerNode`) |
+| `gradient_boosting` | `GBT*` (`trees` → `maxIter`, `learning_rate` → `stepSize`) |
+| `logistic_regression` | `LogisticRegression` (`max_iter` → `maxIter`, `c` → `regParam = 1 / c`) |
+| `linear_regression` | `LinearRegression` |
+
+Differences from the Python backend, so results are close but not identical:
+
+- the validation split is random, not stratified, so its size varies slightly around `validation`;
+- unset parameters use Spark's defaults (for example a maximum tree depth of 5);
+- `gradient_boosting` classification supports two classes only;
+- `auc` is reported for 0/1 targets only.
 
 ## Example
 

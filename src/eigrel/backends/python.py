@@ -1,19 +1,11 @@
 """Python backend: turn the IR into a readable pandas + scikit-learn script."""
 
-import keyword
 from dataclasses import dataclass, field
 
 from eigrel import __version__
-from eigrel.backends import sql
+from eigrel.backends import Requirement, sql
+from eigrel.backends.naming import assign_names
 from eigrel.compiler import ast, ir
-
-
-@dataclass(frozen=True)
-class Requirement:
-    """A module the generated code imports, and the eigrel extra that installs it."""
-
-    module: str
-    extra: str
 
 
 def runtime_requirements(graph: ir.Graph) -> list[Requirement]:
@@ -89,6 +81,8 @@ RESERVED = {
     'os',
     'bigquery',
     'create_engine',
+    'NullPool',
+    'connection',
     'print',
     'len',
     'set',
@@ -110,7 +104,7 @@ class _Generator:
     names: dict[str, str] = field(default_factory=dict)
 
     def generate(self, source_name: str) -> str:
-        self._assign_names()
+        self.names = assign_names(self.graph, RESERVED, model_helpers=MODEL_HELPERS)
         for op in self.graph.ops:
             match op:
                 case ir.Load():
@@ -145,9 +139,15 @@ class _Generator:
                 lines = str(location).lower().endswith(('.jsonl', '.ndjson'))
                 read = f'pd.read_json({location!r}{", lines=True" if lines else ""})'
             case 'sql':
+                # NullPool closes the connection as soon as the read is done.
                 self._import('sqlalchemy', 'create_engine')
-                engine = f'create_engine({self._source_value(location)})'
-                read = f'pd.read_sql_query({sql.select_all(op)!r}, {engine})'
+                self._import('sqlalchemy.pool', 'NullPool')
+                engine = f'create_engine({self._source_value(location)}, poolclass=NullPool)'
+                self.lines += [
+                    f'with {engine}.connect() as connection:',
+                    f'    {name} = pd.read_sql_query({sql.select_all(op)!r}, connection)',
+                ]
+                return
             case 'bigquery':
                 self._import('google.cloud', 'bigquery')
                 read = f'bigquery.Client().query({sql.select_all(op)!r}).to_dataframe()'
@@ -257,26 +257,6 @@ class _Generator:
                 python_op = BINARY_OPERATORS.get(op, op)
                 return f'({self._expr(left, frame)} {python_op} {self._expr(right, frame)})'
         raise AssertionError(f'semantic analysis rejects {expr!r} in filters')  # pragma: no cover
-
-    def _assign_names(self) -> None:
-        """Pick a Python variable per Eigrel name that clashes with nothing else in the script."""
-        models = {op.name for op in self.graph.ops if isinstance(op, ir.Train)}
-        taken: set[str] = set()
-        for op in self.graph.ops:
-            if op.name in self.names:
-                continue
-            helpers = MODEL_HELPERS if op.name in models else ()
-            variable = op.name
-            while (
-                keyword.iskeyword(variable)
-                or variable in RESERVED
-                or variable in taken
-                or any(variable + suffix in taken for suffix in helpers)
-            ):
-                variable += '_'
-            taken.add(variable)
-            taken.update(variable + suffix for suffix in helpers)
-            self.names[op.name] = variable
 
     def _bind(self, op: ir.Op) -> str:
         self.variables[op.id] = self.names[op.name]

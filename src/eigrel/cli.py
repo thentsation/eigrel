@@ -1,12 +1,15 @@
 import argparse
 import importlib.util
 import json
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 from eigrel import __version__
 from eigrel.backends import python as python_backend
+from eigrel.backends import spark as spark_backend
 from eigrel.backends import sql as sql_backend
 from eigrel.compiler import EigrelError, analyze, parse, tokenize
 from eigrel.compiler.ast import to_dict
@@ -38,7 +41,28 @@ def _compile(path: str) -> Graph | None:
         return None
 
 
-BACKENDS = {'python': python_backend.generate, 'sql': sql_backend.generate}
+BACKENDS = {
+    'python': python_backend.generate,
+    'spark': spark_backend.generate,
+    'sql': sql_backend.generate,
+}
+RUNNERS = {
+    'python': (python_backend.generate, python_backend.runtime_requirements),
+    'spark': (spark_backend.generate, spark_backend.runtime_requirements),
+}
+
+
+def _has_java() -> bool:
+    """Whether a working Java runtime is available (macOS ships a stub `java` without one)."""
+    java_home = os.environ.get('JAVA_HOME')
+    java = str(Path(java_home) / 'bin' / 'java') if java_home else shutil.which('java')
+    if java is None:
+        return False
+    try:
+        result = subprocess.run([java, '-version'], capture_output=True, check=False, timeout=30)
+    except OSError:
+        return False
+    return result.returncode == 0
 
 
 def _importable(module: str) -> bool:
@@ -113,14 +137,17 @@ def cmd_run(args: argparse.Namespace) -> int:
     graph = _compile(args.file)
     if graph is None:
         return 1
-    requirements = python_backend.runtime_requirements(graph)
-    missing = [r for r in requirements if not _importable(r.module)]
+    generate, requirements = RUNNERS[args.target]
+    missing = [r for r in requirements(graph) if not _importable(r.module)]
     if missing:
         modules = ', '.join(r.module for r in missing)
         extras = ','.join(sorted({r.extra for r in missing}))
         _error(f'running needs {modules}; install them with: pip install "eigrel[{extras}]"')
         return 1
-    code = python_backend.generate(graph, Path(args.file).name)
+    if args.target == 'spark' and not _has_java():
+        _error('running on Spark needs Java 17 or newer; install a JDK and set JAVA_HOME')
+        return 1
+    code = generate(graph, Path(args.file).name)
     # Paths inside the program are relative to the file, like imports in most languages.
     workdir = Path(args.file).resolve().parent
     return subprocess.run([sys.executable, '-c', code], cwd=workdir, check=False).returncode
@@ -155,10 +182,16 @@ def build_parser() -> argparse.ArgumentParser:
     command('check', 'check files for syntax and semantic errors', cmd_check).add_argument(
         'files', nargs='+', metavar='FILE'
     )
-    command('run', 'compile a file to Python and run it', cmd_run).add_argument(
-        'file', metavar='FILE'
+    run = command('run', 'compile a file and run it', cmd_run)
+    run.add_argument('file', metavar='FILE')
+    run.add_argument(
+        '-t',
+        '--target',
+        choices=sorted(RUNNERS),
+        default='python',
+        help='backend to run on (default: python)',
     )
-    compile_cmd = command('compile', 'print the generated code (Python or SQL)', cmd_compile)
+    compile_cmd = command('compile', 'print the generated code (Python, Spark or SQL)', cmd_compile)
     compile_cmd.add_argument('file', metavar='FILE')
     compile_cmd.add_argument('-o', '--output', metavar='PATH', help='write the code to PATH')
     compile_cmd.add_argument(

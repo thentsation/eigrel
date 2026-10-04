@@ -5,7 +5,7 @@ PYTHON := $(VENV)/bin/python
 
 install:
 	uv venv --python 3.14 $(VENV)
-	uv pip install --python $(PYTHON) -r config/requirements-dev.txt -e '.[python,sql]'
+	uv pip install --python $(PYTHON) -r config/requirements-dev.txt -e '.[python,sql,spark]'
 
 test:
 	$(PYTHON) -m pytest

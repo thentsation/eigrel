@@ -131,6 +131,45 @@ def test_run_reads_a_sql_database(examples_dir: Path, capfd: pytest.CaptureFixtu
     )
 
 
+def test_compile_to_spark(examples_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(['compile', '-t', 'spark', str(examples_dir / 'ml.eig')]) == 0
+    assert 'from pyspark.ml.classification import RandomForestClassifier' in capsys.readouterr().out
+
+
+def test_run_on_spark_needs_pyspark_and_java(
+    examples_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from eigrel import cli
+
+    monkeypatch.setattr(cli, '_importable', lambda module: module != 'pyspark')
+    assert main(['run', '-t', 'spark', str(examples_dir / 'ml.eig')]) == 1
+    assert 'pip install "eigrel[spark]"' in capsys.readouterr().err
+
+    monkeypatch.setattr(cli, '_importable', lambda module: True)
+    monkeypatch.setattr(cli, '_has_java', lambda: False)
+    assert main(['run', '-t', 'spark', str(examples_dir / 'ml.eig')]) == 1
+    assert 'needs Java 17 or newer' in capsys.readouterr().err
+
+
+def test_has_java(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import subprocess
+
+    from eigrel import cli
+
+    monkeypatch.setenv('JAVA_HOME', str(tmp_path / 'missing'))
+    assert cli._has_java() is False  # the binary does not exist
+
+    monkeypatch.delenv('JAVA_HOME')
+    monkeypatch.setattr(cli.shutil, 'which', lambda name: None)
+    assert cli._has_java() is False
+
+    monkeypatch.setattr(cli.shutil, 'which', lambda name: '/usr/bin/java')
+    monkeypatch.setattr(
+        cli.subprocess, 'run', lambda *a, **k: subprocess.CompletedProcess(a, returncode=0)
+    )
+    assert cli._has_java() is True
+
+
 def test_run_without_runtime_dependencies(
     examples_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
