@@ -75,6 +75,11 @@ def _importable(module: str) -> bool:
 
 
 def cmd_check(args: argparse.Namespace) -> int:
+    if args.json:
+        reports = [_check_report(path) for path in args.files]
+        ok = all(report['ok'] for report in reports)
+        print(json.dumps({'eigrel': __version__, 'ok': ok, 'files': reports}, indent=2))
+        return 0 if ok else 1
     failed = 0
     for path in args.files:
         graph = _compile(path)
@@ -85,6 +90,27 @@ def cmd_check(args: argparse.Namespace) -> int:
             noun = 'operation' if count == 1 else 'operations'
             print(f'ok: {path} ({count} {noun})')
     return 1 if failed else 0
+
+
+def _check_report(path: str) -> dict[str, object]:
+    """Check one file and return a machine-readable report for `check --json`."""
+    errors: list[dict[str, object]]
+    try:
+        source = Path(path).read_text(encoding='utf-8')
+    except OSError as exc:
+        errors = [{'stage': 'io', 'message': f'cannot read {path}: {exc.strerror}'}]
+        return {'path': path, 'ok': False, 'operations': None, 'errors': errors}
+    try:
+        graph = analyze(parse(source))
+    except EigrelError as exc:
+        # LexError, ParseError or SemanticError -> 'lex', 'parse' or 'semantic'.
+        stage = type(exc).__name__.removesuffix('Error').lower()
+        errors = [
+            {'stage': stage, 'message': exc.message, 'line': exc.loc.line, 'column': exc.loc.column}
+        ]
+        return {'path': path, 'ok': False, 'operations': None, 'errors': errors}
+    count = len(graph.ops)
+    return {'path': path, 'ok': True, 'operations': count, 'errors': []}
 
 
 def cmd_ast(args: argparse.Namespace) -> int:
@@ -190,8 +216,10 @@ def build_parser() -> argparse.ArgumentParser:
         sub.set_defaults(handler=handler)
         return sub
 
-    command('check', 'check files for syntax and semantic errors', cmd_check).add_argument(
-        'files', nargs='+', metavar='FILE'
+    check = command('check', 'check files for syntax and semantic errors', cmd_check)
+    check.add_argument('files', nargs='+', metavar='FILE')
+    check.add_argument(
+        '--json', action='store_true', help='report the results as JSON (for tools and agents)'
     )
     run = command('run', 'compile a file and run it', cmd_run)
     run.add_argument('file', metavar='FILE')

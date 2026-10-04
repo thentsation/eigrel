@@ -72,7 +72,7 @@ churn: random_forest classification, trained on 315 rows, validated on 79
 | Command | What it does |
 |---|---|
 | `eigrel run FILE [-t python\|spark]` | Compiles the program and runs it (default: Python) |
-| `eigrel check FILE...` | Reports syntax and semantic errors with line and column |
+| `eigrel check FILE... [--json]` | Reports syntax and semantic errors with line and column (`--json`: machine-readable) |
 | `eigrel compile FILE [-t python\|spark\|sql] [-o PATH]` | Prints (or writes) the generated code |
 | `eigrel ir FILE` | Prints the intermediate representation |
 | `eigrel ast FILE` | Prints the syntax tree as JSON |
@@ -175,6 +175,18 @@ eigrel run churn/main.eig
 
 Paths must be inside the current directory, since only it is mounted. To build the image locally,
 use `make docker-build` and `make docker-run`.
+
+### AI agents
+
+Eigrel is designed to be written by AI agents and verified by the compiler. Point your agent at
+[llms.txt](llms.txt) — the complete grammar in one file — and have it loop
+`eigrel check --json FILE.eig` until `"ok": true`; every error comes back with an exact line and
+column, so the fix is mechanical. What passes `check` is guaranteed to compile, and the same
+program runs on a laptop or a Spark cluster.
+
+```bash
+eigrel check --json churn.eig
+```
 
 ## Language
 
