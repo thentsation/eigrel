@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v0.8.0 (2026-10-04)
+
+### Features
+
+- Predict with the training pipeline, time-ordered splits and capability matrix
+  ([#14](https://github.com/thentsation/eigrel/pull/14),
+  [`22bfe5d`](https://github.com/thentsation/eigrel/commit/22bfe5d163978d2237af6727c81856413ed451ce))
+
+
 ## v0.7.0 (2026-10-04)
 
 ### Documentation
