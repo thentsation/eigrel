@@ -35,6 +35,8 @@ spark = ['pyspark>=4.2,<4.3']
 # `model ... = xgboost` and `register` (MLflow).
 xgboost = ['xgboost>=3.4,<4']
 mlflow = ['mlflow>=3.16,<4']
+# `eigrel mcp`, the Model Context Protocol server for agents.
+mcp = ['mcp>=2.3,<3']
 
 [project.urls]
 Homepage = 'https://github.com/thentsation/eigrel'
@@ -47,6 +49,9 @@ eigrel = 'eigrel.cli:main'
 
 [tool.setuptools.packages.find]
 where = ['src']
+
+[tool.setuptools.package-data]
+eigrel = ['llms.txt']
 
 [tool.semantic_release]
 tag_format = 'v{version}'
