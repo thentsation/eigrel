@@ -42,14 +42,16 @@ evaluate churn {
 
 ## Status
 
-Eigrel is at **v0.2 — Compiler**: programs are checked for meaning, lowered into an intermediate
-representation and compiled to Python (pandas + scikit-learn), so `eigrel run` trains and
-evaluates real models. Next up: more data sources (v0.3). See the [roadmap](docs/ROADMAP.md).
+Eigrel is at **v0.3 — Data**: programs read CSV, Parquet, JSON, SQL databases and BigQuery, are
+checked for meaning, lowered into an intermediate representation and compiled to Python (pandas +
+scikit-learn) or SQL, so `eigrel run` trains and evaluates real models. Next up: a Spark backend
+(v0.4). See the [roadmap](docs/ROADMAP.md).
 
 ## Getting started
 
 Install from PyPI (Python 3.13+). The `python` extra adds pandas and scikit-learn, which
-`eigrel run` needs:
+`eigrel run` needs; add `sql` to read databases or `bigquery` for BigQuery
+(`pip install "eigrel[python,sql]"`):
 
 ```bash
 pip install "eigrel[python]"
@@ -71,7 +73,7 @@ churn: random_forest classification, trained on 315 rows, validated on 79
 |---|---|
 | `eigrel run FILE` | Compiles the program to Python and runs it |
 | `eigrel check FILE...` | Reports syntax and semantic errors with line and column |
-| `eigrel compile FILE [-o PATH]` | Prints (or writes) the generated Python code |
+| `eigrel compile FILE [-t python\|sql] [-o PATH]` | Prints (or writes) the generated Python or SQL |
 | `eigrel ir FILE` | Prints the intermediate representation |
 | `eigrel ast FILE` | Prints the syntax tree as JSON |
 | `eigrel tokens FILE` | Prints the token stream |
@@ -101,6 +103,23 @@ source → lexer → parser → AST → semantic analysis → IR → Python back
 %2 = select %1 [age, income, purchases, churned]  # customers
 %3 = train %2 random_forest(trees=100, max_depth=8) classification features=[age, income, purchases] target=churned validation=0.2 seed=42  # churn
 %4 = evaluate %3 [accuracy, precision, recall, f1]  # churn
+```
+
+### Data sources
+
+```eigrel
+dataset customers from csv("data/customers.csv")
+dataset events    from json("data/events.jsonl")
+dataset orders    from sql(env("DATABASE_URL"), "shop.orders")
+dataset users     from bigquery("my-project.analytics.users")
+```
+
+`eigrel compile --target sql` turns the data part of a program into a query for the engine each
+source lives in:
+
+```sql
+-- dataset users (bigquery, bigquery dialect)
+SELECT `age`, `income`, `country` FROM `project.dataset.users` WHERE ((`age` > 18) AND (`income` <> 0));
 ```
 
 ### Docker

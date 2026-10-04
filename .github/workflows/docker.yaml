@@ -38,8 +38,9 @@ jobs:
       - name: Smoke test the CLI inside the image
         run: |
           docker run --rm eigrel:ci --version
-          docker run --rm -v "$PWD/examples:/work" eigrel:ci check hello.eig pipeline.eig ml.eig regression.eig
+          docker run --rm -v "$PWD/examples:/work" eigrel:ci check hello.eig pipeline.eig ml.eig regression.eig sql.eig
           docker run --rm -v "$PWD/examples:/work" eigrel:ci run ml.eig
+          docker run --rm -v "$PWD/examples:/work" eigrel:ci run sql.eig
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0

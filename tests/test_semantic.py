@@ -91,8 +91,24 @@ def test_filter_type_checking_accepts_valid_expressions() -> None:
         (DATA + DATA, "'d' is already defined at line 1", (2, 1)),
         (DATA + 'model d = random_forest', "'d' is already defined at line 1", (2, 1)),
         ('dataset d from s3("x")', "unknown data source 's3'", (1, 16)),
-        ('dataset d from csv("a", "b")', 'takes exactly one string argument', (1, 16)),
-        ('dataset d from csv(1)', 'takes exactly one string argument', (1, 16)),
+        ('dataset d from csv("a", "b")', 'csv() takes 1 argument (path)', (1, 16)),
+        ('dataset d from csv(1)', 'the path must be a string', (1, 20)),
+        ('dataset d from csv("")', 'the path must not be empty', (1, 20)),
+        ('dataset d from sql("u")', 'sql() takes 2 arguments (connection URL, table)', (1, 16)),
+        ('dataset d from sql(1, "t")', 'must be a string or env("VAR")', (1, 20)),
+        (
+            'dataset d from sql(env(), "t")',
+            'env() takes the name of an environment variable',
+            (1, 20),
+        ),
+        (
+            'dataset d from sql(env("1A"), "t")',
+            "'1A' is not a valid environment variable name",
+            (1, 24),
+        ),
+        ('dataset d from sql("u", env("T"))', 'the table must be a string', (1, 25)),
+        ('dataset d from sql("u", "a b")', "'a b' is not a table name", (1, 25)),
+        ('dataset d from bigquery("shop.users")', "'shop.users' is not a BigQuery table", (1, 25)),
         ('transform d { select a }', "unknown dataset 'd'", (1, 1)),
         (
             'model m = random_forest\nfeatures m { a }',
@@ -232,6 +248,21 @@ def test_semantic_errors(source: str, message: str, loc: tuple[int, int]) -> Non
     with pytest.raises(SemanticError, match=re.escape(message)) as info:
         compile_source(source)
     assert info.value.loc == Location(*loc)
+
+
+def test_sources_are_lowered_with_their_arguments() -> None:
+    graph = ops(
+        'dataset a from sql(env("DB_URL"), "public.customers")\n'
+        'dataset b from sql("sqlite:///shop.db", "orders")\n'
+        'dataset c from bigquery("my-project.shop.users")\n'
+        'dataset e from json("events.jsonl")\n'
+    )
+    assert [op.args for op in graph if isinstance(op, ir.Load)] == [
+        (ir.EnvVar('DB_URL'), 'public.customers'),
+        ('sqlite:///shop.db', 'orders'),
+        ('my-project.shop.users',),
+        ('events.jsonl',),
+    ]
 
 
 def test_negative_float_parameter_is_rejected() -> None:

@@ -5,7 +5,7 @@ PYTHON := $(VENV)/bin/python
 
 install:
 	uv venv --python 3.14 $(VENV)
-	uv pip install --python $(PYTHON) -r config/requirements-dev.txt -e '.[python]'
+	uv pip install --python $(PYTHON) -r config/requirements-dev.txt -e '.[python,sql]'
 
 test:
 	$(PYTHON) -m pytest
@@ -30,6 +30,7 @@ check-examples:
 run-examples:
 	$(VENV)/bin/eigrel run examples/ml.eig
 	$(VENV)/bin/eigrel run examples/regression.eig
+	$(VENV)/bin/eigrel run examples/sql.eig
 
 lock:
 	uv pip compile config/requirements.txt --output-file=config/requirements.lock --universal

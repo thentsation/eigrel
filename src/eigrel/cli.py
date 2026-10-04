@@ -7,6 +7,7 @@ from pathlib import Path
 
 from eigrel import __version__
 from eigrel.backends import python as python_backend
+from eigrel.backends import sql as sql_backend
 from eigrel.compiler import EigrelError, analyze, parse, tokenize
 from eigrel.compiler.ast import to_dict
 from eigrel.compiler.ir import Graph, format_graph
@@ -37,15 +38,14 @@ def _compile(path: str) -> Graph | None:
         return None
 
 
-def _generate(path: str) -> str | None:
-    graph = _compile(path)
-    if graph is None:
-        return None
+BACKENDS = {'python': python_backend.generate, 'sql': sql_backend.generate}
+
+
+def _importable(module: str) -> bool:
     try:
-        return python_backend.generate(graph, Path(path).name)
-    except python_backend.BackendError as exc:
-        _error(str(exc))
-        return None
+        return importlib.util.find_spec(module) is not None
+    except ModuleNotFoundError:  # a parent package such as google is missing
+        return False
 
 
 def cmd_check(args: argparse.Namespace) -> int:
@@ -97,9 +97,10 @@ def cmd_ir(args: argparse.Namespace) -> int:
 
 
 def cmd_compile(args: argparse.Namespace) -> int:
-    code = _generate(args.file)
-    if code is None:
+    graph = _compile(args.file)
+    if graph is None:
         return 1
+    code = BACKENDS[args.target](graph, Path(args.file).name)
     if args.output is None:
         print(code, end='')
     else:
@@ -109,15 +110,17 @@ def cmd_compile(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    code = _generate(args.file)
-    if code is None:
+    graph = _compile(args.file)
+    if graph is None:
         return 1
-    missing = [m for m in python_backend.RUNTIME_MODULES if importlib.util.find_spec(m) is None]
+    requirements = python_backend.runtime_requirements(graph)
+    missing = [r for r in requirements if not _importable(r.module)]
     if missing:
-        _error(
-            f'running needs {" and ".join(missing)}; install them with: pip install "eigrel[python]"'
-        )
+        modules = ', '.join(r.module for r in missing)
+        extras = ','.join(sorted({r.extra for r in missing}))
+        _error(f'running needs {modules}; install them with: pip install "eigrel[{extras}]"')
         return 1
+    code = python_backend.generate(graph, Path(args.file).name)
     # Paths inside the program are relative to the file, like imports in most languages.
     workdir = Path(args.file).resolve().parent
     return subprocess.run([sys.executable, '-c', code], cwd=workdir, check=False).returncode
@@ -155,9 +158,16 @@ def build_parser() -> argparse.ArgumentParser:
     command('run', 'compile a file to Python and run it', cmd_run).add_argument(
         'file', metavar='FILE'
     )
-    compile_cmd = command('compile', 'print the generated Python code', cmd_compile)
+    compile_cmd = command('compile', 'print the generated code (Python or SQL)', cmd_compile)
     compile_cmd.add_argument('file', metavar='FILE')
     compile_cmd.add_argument('-o', '--output', metavar='PATH', help='write the code to PATH')
+    compile_cmd.add_argument(
+        '-t',
+        '--target',
+        choices=sorted(BACKENDS),
+        default='python',
+        help='backend to generate code for (default: python)',
+    )
     command('ir', 'print the intermediate representation', cmd_ir).add_argument(
         'file', metavar='FILE'
     )

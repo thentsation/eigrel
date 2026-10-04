@@ -32,6 +32,16 @@ def test_format_graph() -> None:
     ]
 
 
+def test_format_sources() -> None:
+    graph = compile_source(
+        'dataset a from sql(env("DB_URL"), "customers")\ndataset b from bigquery("my-project.s.t")'
+    )
+    assert format_graph(graph).splitlines() == [
+        '%0 = load sql(env("DB_URL"), "customers")  # a',
+        '%1 = load bigquery("my-project.s.t")  # b',
+    ]
+
+
 def test_format_expr_covers_every_expression() -> None:
     expr = ast.Call(
         'f',

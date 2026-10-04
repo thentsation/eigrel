@@ -4,11 +4,12 @@
 |---|---|---|---|
 | v0.1 | Language | Lexer, parser, AST, basic types, datasets, transformations, CLI | ✅ done |
 | v0.2 | Compiler | Semantic analysis, Eigrel IR, execution graph, Python backend | ✅ done |
-| v0.3 | Data | CSV, Parquet, SQL, BigQuery, Spark | |
-| v0.4 | ML | Features, models, training, evaluation, MLflow (`register`) | |
-| v0.5 | Optimizer | Filter/projection pushdown, CSE, DAG optimization, backend selection, execution planning | |
-| v0.6 | GenAI | Embeddings, vector stores, RAG (`knowledge`, `assistant`), LLMs, evaluation | |
-| v0.7 | Agents | Tools, agents, workflows, multi-agent pipelines | |
+| v0.3 | Data | CSV, Parquet, JSON, SQL databases, BigQuery, `env()` secrets, SQL backend | ✅ done |
+| v0.4 | Spark | Spark backend: PySpark for data operations, Spark MLlib for training | |
+| v0.5 | ML | Features, models, training, evaluation, MLflow (`register`) | |
+| v0.6 | Optimizer | Filter/projection pushdown, CSE, DAG optimization, backend selection, execution planning | |
+| v0.7 | GenAI | Embeddings, vector stores, RAG (`knowledge`, `assistant`), LLMs, evaluation | |
+| v0.8 | Agents | Tools, agents, workflows, multi-agent pipelines | |
 | v1.0 | Platform | Language, compiler, IR, optimizer, runtime, backends, CLI, package manager, registry, VS Code extension, docs | |
 
 ## Target architecture
@@ -21,7 +22,7 @@ Lexer → Parser → AST → Semantic analysis → Eigrel IR → Optimizer
                                                           │
                                    ┌──────────────────────┼──────────────────────┐
                                    ▼                      ▼                      ▼
-                                 Python                  SQL                   Spark
+                              Python ✅               SQL ✅                 Spark
 ```
 
 Later backends: PyTorch, MLIR, BigQuery, cloud runtimes.
@@ -32,7 +33,7 @@ Later backends: PyTorch, MLIR, BigQuery, cloud runtimes.
 eigrel init my-project   # ✅ v0.1 (sample data since v0.2)
 eigrel check             # ✅ v0.2 (syntax and semantics)
 eigrel run               # ✅ v0.2
-eigrel compile file.eig  # ✅ v0.2
+eigrel compile file.eig  # ✅ v0.2 (--target sql since v0.3)
 eigrel ir file.eig       # ✅ v0.2
 eigrel build             # planned
 eigrel fmt               # planned

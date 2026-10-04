@@ -35,7 +35,7 @@ jobs:
           activate-environment: true
 
       - name: Install dependencies
-        run: uv pip install -r config/requirements-dev.txt -e '.[python]'
+        run: uv pip install -r config/requirements-dev.txt -e '.[python,sql]'
 
       - name: Ruff check
         run: ruff check .
@@ -71,7 +71,7 @@ jobs:
           activate-environment: true
 
       - name: Install dependencies
-        run: uv pip install -r config/requirements-dev.txt -e '.[python]'
+        run: uv pip install -r config/requirements-dev.txt -e '.[python,sql]'
 
       - name: Run tests
         run: pytest --cov=src --cov-report=term-missing --cov-fail-under=90
@@ -83,6 +83,7 @@ jobs:
         run: |
           eigrel run examples/ml.eig
           eigrel run examples/regression.eig
+          eigrel run examples/sql.eig
 
   audit:
     name: audit

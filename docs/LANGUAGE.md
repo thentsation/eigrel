@@ -1,4 +1,4 @@
-# Eigrel language reference (v0.2)
+# Eigrel language reference (v0.3)
 
 This describes the syntax the parser accepts and the rules the compiler checks before generating
 code. Every rule below is reported at compile time, with the line and column of the problem.
@@ -57,13 +57,29 @@ share one namespace, so a name can be declared only once.
 
 ### Data sources
 
-| Source | Python backend |
-|---|---|
-| `csv("path.csv")` | `pandas.read_csv` |
-| `parquet("path.parquet")` | `pandas.read_parquet` (needs `pyarrow`) |
-| `bigquery("project.dataset.table")` | accepted by the compiler; backend arrives in v0.3 |
+| Source | Python backend | SQL backend | Extra |
+|---|---|---|---|
+| `csv("path.csv")` | `pandas.read_csv` | DuckDB `read_csv_auto` | `python` |
+| `parquet("path.parquet")` | `pandas.read_parquet` | DuckDB `read_parquet` | `python` |
+| `json("path.json")` | `pandas.read_json` (`.jsonl`/`.ndjson` read as JSON lines) | DuckDB `read_json_auto` | `python` |
+| `sql(url, "table")` | `pandas.read_sql_query` over SQLAlchemy | the database's dialect | `sql` |
+| `bigquery("project.dataset.table")` | `google.cloud.bigquery` client | BigQuery SQL | `bigquery` |
 
-Paths are relative to the `.eig` file.
+Paths are relative to the `.eig` file. `url` is any
+[SQLAlchemy URL](https://docs.sqlalchemy.org/en/20/core/engines.html#database-urls), e.g.
+`"sqlite:///data/shop.db"` or `"postgresql+psycopg://user@host/db"` (install the driver too). The
+table may be schema-qualified (`"shop.orders"`).
+
+Keep credentials out of the code with `env("NAME")`, which reads an environment variable when the
+program runs. It is accepted wherever a connection URL is:
+
+```eigrel
+dataset orders from sql(env("DATABASE_URL"), "shop.orders")
+```
+
+`eigrel compile --target sql` emits one `SELECT` per dataset, with its filters and final projection,
+quoted for its engine: DuckDB for files, BigQuery, MySQL/MariaDB, PostgreSQL, SQLite, or ANSI SQL
+when the URL comes from `env()`. Models are not part of the SQL output.
 
 ### Transformations and columns
 

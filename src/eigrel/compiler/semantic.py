@@ -1,5 +1,6 @@
 """Semantic analysis: validate a parsed program and lower it into the IR."""
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Literal
@@ -12,11 +13,15 @@ from eigrel.compiler.catalog import (
     DEFAULT_VALIDATION,
     METRICS,
     SOURCES,
+    SourceArgKind,
 )
 from eigrel.compiler.errors import SemanticError
 from eigrel.compiler.tokens import Location
 
 ExprType = Literal['bool', 'number', 'string', 'unknown']
+ENV_VAR = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
+SQL_TABLE = re.compile(r'[A-Za-z_][A-Za-z0-9_$]*(\.[A-Za-z_][A-Za-z0-9_$]*)?')
+BIGQUERY_TABLE = re.compile(r'[a-z][a-z0-9-]{4,29}\.[A-Za-z0-9_]+\.[A-Za-z0-9_$-]+')
 TASKS: tuple[ir.Task, ...] = ('classification', 'regression')
 
 
@@ -68,21 +73,52 @@ class Analyzer:
 
     def _dataset(self, decl: ast.DatasetDecl) -> None:
         self._check_new_name(decl.name, decl.loc)
-        source = decl.source
-        if source.func not in SOURCES:
+        call = decl.source
+        source = SOURCES.get(call.func)
+        if source is None:
             raise SemanticError(
-                f"unknown data source '{source.func}'; expected one of {_names(SOURCES)}",
-                source.loc,
+                f"unknown data source '{call.func}'; expected one of {_names(SOURCES)}",
+                call.loc,
             )
-        if len(source.args) != 1 or not isinstance(source.args[0], ast.StringLiteral):
+        if len(call.args) != len(source.args):
+            expected = ', '.join(description for description, _ in source.args)
             raise SemanticError(
-                f'{source.func}() takes exactly one string argument, the location of the data',
-                source.loc,
+                f'{call.func}() takes {len(source.args)} argument'
+                f'{"" if len(source.args) == 1 else "s"} ({expected}), e.g. {source.example}',
+                call.loc,
             )
-        op = self.graph.add(
-            ir.Load(self.graph.next_id(), decl.name, source.func, source.args[0].value)
+        args = tuple(
+            self._source_arg(arg, description, kind)
+            for arg, (description, kind) in zip(call.args, source.args, strict=True)
         )
+        op = self.graph.add(ir.Load(self.graph.next_id(), decl.name, call.func, args))
         self.datasets[decl.name] = Dataset(op, decl.loc)
+
+    def _source_arg(self, arg: ast.Expr, description: str, kind: SourceArgKind) -> ir.SourceArg:
+        if kind == 'url' and isinstance(arg, ast.Call) and arg.func == 'env':
+            if len(arg.args) != 1 or not isinstance(arg.args[0], ast.StringLiteral):
+                raise SemanticError('env() takes the name of an environment variable', arg.loc)
+            name = arg.args[0].value
+            if not ENV_VAR.fullmatch(name):
+                raise SemanticError(
+                    f"'{name}' is not a valid environment variable name", arg.args[0].loc
+                )
+            return ir.EnvVar(name)
+        if not isinstance(arg, ast.StringLiteral):
+            hint = ' or env("VAR")' if kind == 'url' else ''
+            raise SemanticError(f'the {description} must be a string{hint}', arg.loc)
+        value = arg.value
+        if not value:
+            raise SemanticError(f'the {description} must not be empty', arg.loc)
+        if kind == 'table' and not SQL_TABLE.fullmatch(value):
+            raise SemanticError(
+                f"'{value}' is not a table name; use table or schema.table", arg.loc
+            )
+        if kind == 'bigquery_table' and not BIGQUERY_TABLE.fullmatch(value):
+            raise SemanticError(
+                f"'{value}' is not a BigQuery table; use project.dataset.table", arg.loc
+            )
+        return value
 
     def _transform(self, decl: ast.TransformDecl) -> None:
         dataset = self._dataset_named(decl.dataset, decl.loc)
