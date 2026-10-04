@@ -19,5 +19,5 @@ def test_mistakes_are_rejected_where_the_readme_says(
     err = capsys.readouterr().err
     assert "error: target 'churned' is also declared as a feature of 'customers'" in err
     assert ':26:14' in err
-    readme = (examples_dir.parent / 'README.md').read_text()
+    readme = (examples_dir.parent / 'README.md').read_text(encoding='utf-8')
     assert 'examples/mistakes/target_leakage.eig:26:14' in readme
