@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v0.6.1 (2026-10-04)
+
+### Bug Fixes
+
+- Restore check --json and llms.txt removed by #10
+  ([#11](https://github.com/thentsation/eigrel/pull/11),
+  [`3dcc587`](https://github.com/thentsation/eigrel/commit/3dcc5873544b01b7693dd8e4bf9ef74cb07a7079))
+
+
 ## v0.6.0 (2026-10-04)
 
 ### Features
