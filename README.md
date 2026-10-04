@@ -5,6 +5,7 @@
 [![CI](https://github.com/thentsation/eigrel/actions/workflows/ci.yaml/badge.svg)](https://github.com/thentsation/eigrel/actions/workflows/ci.yaml)
 [![PyPI](https://img.shields.io/pypi/v/eigrel)](https://pypi.org/project/eigrel/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/thentsation/eigrel/badge)](https://scorecard.dev/viewer/?uri=github.com/thentsation/eigrel)
 
 > Write what you want. Let the compiler decide how to run it.
 
