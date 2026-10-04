@@ -392,3 +392,14 @@ def test_database_types_without_a_python_type_are_unknown() -> None:
 
     assert _python_type(Opaque()) is None
     assert python_type(_python_type(Opaque())) == 'unknown'
+
+
+def test_ascii_fallback_for_limited_encodings(examples_dir: Path) -> None:
+    from eigrel.planner import render_for
+
+    plan = build_plan(examples_dir / 'ml.eig')
+    assert '→' in render_for(plan, 'utf-8')
+    text = render_for(plan, 'cp1252')
+    assert '400 -> 394 rows' in text and 'ok no problems found' in text
+    text.encode('cp1252')
+    assert render_for(plan, 'no-such-codec').isascii()

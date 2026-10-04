@@ -495,6 +495,18 @@ def to_json(plan: Plan) -> dict[str, Any]:
 
 
 SYMBOLS = {'error': '✗', 'warning': '!', 'info': '·'}
+# For terminals and pipes that cannot encode the symbols (e.g. cp1252 on Windows).
+ASCII = str.maketrans({'✗': 'x', '·': '-', '✓': 'ok', '→': '->', '←': '<-', '…': '...'})
+
+
+def render_for(plan: Plan, encoding: str | None) -> str:
+    """The rendered plan, with ASCII symbols if `encoding` cannot represent the others."""
+    text = render(plan)
+    try:
+        text.encode(encoding or 'ascii')
+    except (UnicodeEncodeError, LookupError):
+        return text.translate(ASCII)
+    return text
 
 
 def render(plan: Plan) -> str:

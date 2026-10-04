@@ -195,7 +195,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(planner.to_json(plan), indent=2, default=str))
     else:
-        print(planner.render(plan), end='')
+        print(planner.render_for(plan, sys.stdout.encoding), end='')
     if not plan.ok:
         return 1
     if args.save:
