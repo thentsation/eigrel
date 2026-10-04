@@ -52,6 +52,10 @@ ALGORITHMS: dict[str, Algorithm] = {
         ('classification', 'regression'),
         {'trees': 'int', 'learning_rate': 'number', 'max_depth': 'int'},
     ),
+    'xgboost': Algorithm(
+        ('classification', 'regression'),
+        {'trees': 'int', 'learning_rate': 'number', 'max_depth': 'int'},
+    ),
     'logistic_regression': Algorithm(('classification',), {'max_iter': 'int', 'c': 'number'}),
     'linear_regression': Algorithm(('regression',), {}),
 }

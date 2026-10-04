@@ -1,0 +1,35 @@
+# Clean the data, train an XGBoost model and register it in MLflow.
+# Runs are stored in ./mlflow.db next to this file unless MLFLOW_TRACKING_URI points elsewhere.
+
+dataset customers from csv("data/customers.csv")
+
+transform customers {
+    fill income = 0
+    drop_missing age, purchases
+    filter age >= 18
+}
+
+features customers {
+    age
+    income
+    purchases
+}
+
+model churn = xgboost {
+    trees = 200
+    learning_rate = 0.05
+    max_depth = 4
+}
+
+train churn {
+    target = churned
+}
+
+evaluate churn {
+    metrics = [accuracy, precision, recall, f1, auc]
+}
+
+register churn {
+    name = "customer-churn"
+    experiment = "eigrel-examples"
+}

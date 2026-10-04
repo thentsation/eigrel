@@ -7,12 +7,21 @@ from eigrel.backends.python import Requirement, generate, runtime_requirements
 from eigrel.compiler import compile_source
 
 
-def run(source: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
-    """Compile Eigrel to Python and execute it inside tmp_path, returning the code."""
+def run_scope(
+    source: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[str, dict[str, object]]:
+    """Compile Eigrel to Python, execute it inside tmp_path, return the code and the scope."""
     code = generate(compile_source(source), 'test.eig')
     monkeypatch.chdir(tmp_path)
+    scope: dict[str, object] = {'__name__': '__main__'}
     # Executing the generated program is the point of these tests.
-    exec(compile(code, 'generated.py', 'exec'), {'__name__': '__main__'})  # noqa: S102
+    exec(compile(code, 'generated.py', 'exec'), scope)  # noqa: S102
+    return code, scope
+
+
+def run(source: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
+    """Compile Eigrel to Python and execute it inside tmp_path, returning the code."""
+    code, _ = run_scope(source, tmp_path, monkeypatch)
     return code
 
 
@@ -56,7 +65,8 @@ def test_binary_classification_with_all_metrics(
     assert '  accuracy   1.0000' in out
     assert '  auc        1.0000' in out
     assert "d = d[(((d['x'] >= -(1)) & ~((d['color'] == 'green'))) & True)]" in code
-    assert 'pd.get_dummies(' in code
+    assert "OneHotEncoder(handle_unknown='ignore'" in code
+    assert 'for column in m_X_train' in code  # the encoder is fit on training rows only
 
 
 def test_multiclass_logistic_regression(
@@ -94,7 +104,7 @@ def test_regression_without_features_block(
     out = capsys.readouterr().out
     assert 'm: linear_regression regression, trained on 90 rows, validated on 30' in out
     assert '  r2    1.0000' in out
-    assert "pd.get_dummies(d.drop(columns=['value']))" in code
+    assert 'm = Pipeline([' in code
     assert 'LinearRegression()' in code
     assert 'stratify=None' in code
     assert 'DecisionTreeRegressor(max_depth=3, min_samples_leaf=2, random_state=42)' in code
@@ -111,7 +121,7 @@ def test_python_keywords_and_reserved_names_are_renamed(
         monkeypatch,
     )
     assert "pd_ = pd.read_csv('data.csv')" in code
-    assert 'class_ = RandomForestClassifier(' in code
+    assert 'class_ = Pipeline([' in code
     assert 'class: random_forest classification' in capsys.readouterr().out
 
 
@@ -132,8 +142,8 @@ def test_names_never_clash_with_helpers_or_imports(
     )
     assert "m_X = pd.read_csv('data.csv')" in code
     assert "accuracy_score_ = pd.read_csv('data.csv')" in code
-    assert 'm_ = RandomForestClassifier(' in code
-    assert 'm__ = DecisionTreeClassifier(' in code
+    assert 'm_ = Pipeline([' in code
+    assert 'm__ = Pipeline([' in code
     assert capsys.readouterr().out.count('  accuracy  ') == 2
 
 
@@ -230,6 +240,102 @@ def test_bigquery_source(
     assert 'from google.cloud import bigquery' in code
     assert queries == ['SELECT * FROM `my-project.shop.rows`']
     assert 'trained on 96 rows' in capsys.readouterr().out
+
+
+def test_model_transforms_raw_data_on_its_own(
+    data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The trained pipeline predicts on raw rows, including categories unseen in training."""
+    import pandas as pd
+
+    code, scope = run_scope(
+        'dataset d from csv("data.csv")\n'
+        'features d { x, z, color }\n'
+        'model m = random_forest { trees = 20 }\n'
+        'train m { target = binary }\n'
+        'evaluate m { metrics = [accuracy] }\n',
+        tmp_path,
+        monkeypatch,
+    )
+    assert 'Pipeline([' in code and 'ColumnTransformer(' in code
+    fresh = pd.read_csv(data)  # raw rows, as a consumer of the model would load them
+    fresh.loc[0, 'color'] = 'green'  # a category the model never saw while training
+    model = scope['m']
+    assert hasattr(model, 'predict')
+    assert len(model.predict(fresh[['x', 'z', 'color']])) == 120
+
+
+def test_fill_and_drop_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / 'gaps.csv'
+    rows = ['x,y']
+    rows += [f'{index},{index * 2}' for index in range(10)]
+    rows[4] = '3,'  # a missing y, filled below
+    rows[8] = ',16'  # a missing x, dropped below
+    path.write_text('\n'.join(rows) + '\n')
+    code = run(
+        'dataset d from csv("gaps.csv")\n'
+        'transform d {\n'
+        '    fill y = 0\n'
+        '    drop_missing x\n'
+        '}\n'
+        'model m = decision_tree { task = regression }\n'
+        'train m { target = y }\n',
+        tmp_path,
+        monkeypatch,
+    )
+    assert "d = d.fillna({'y': 0})" in code
+    assert "d = d.dropna(subset=['x'])" in code
+    # 10 rows minus the dropped one, split 70/20.
+    assert 'trained on 7 rows, validated on 2' in capsys.readouterr().out
+
+
+def test_xgboost_generation() -> None:
+    """XGBoost classifiers encode labels, and register through cloudpickle, not skops."""
+    source = (
+        'dataset d from csv("d.csv")\n'
+        'features d { x, z }\n'
+        'model m = xgboost { trees = 50, learning_rate = 0.1 }\n'
+        'train m { target = binary }\n'
+        'evaluate m { metrics = [accuracy] }\n'
+        'register m { name = "prod" }\n'
+    )
+    code = generate(compile_source(source), 'x.eig')
+    assert 'from xgboost import XGBClassifier' in code
+    assert 'm_encoder = LabelEncoder().fit(m_y)' in code
+    assert 'm_encoder.transform(m_y_train))' in code
+    assert 'm_encoder.inverse_transform(m.predict(m_X_test))' in code
+    assert 'XGBClassifier(n_estimators=50, learning_rate=0.1, random_state=42)' in code
+    assert 'mlflow.sklearn.log_model(' in code
+    assert "serialization_format='cloudpickle'" in code
+    assert 'skops' not in code
+    assert [r.module for r in runtime_requirements(compile_source(source))][-2:] == [
+        'xgboost',
+        'mlflow',
+    ]
+
+
+def test_register_generation() -> None:
+    """register logs the whole pipeline, so the model version accepts raw data."""
+    source = (
+        'dataset d from csv("d.csv")\n'
+        'features d { x }\n'
+        'model m = random_forest\n'
+        'train m { target = binary }\n'
+        'evaluate m { metrics = [accuracy] }\n'
+        'register m { name = "churn-prod", experiment = "churn" }\n'
+    )
+    code = generate(compile_source(source), 'r.eig')
+    assert "mlflow.set_experiment('churn')" in code
+    assert "with mlflow.start_run(run_name='m'):" in code
+    assert "'algorithm': 'random_forest'" in code
+    assert 'mlflow.log_metrics(m_metrics)' in code
+    assert 'm_registered = mlflow.sklearn.log_model(' in code
+    assert "registered_model_name='churn-prod'" in code
+    assert 'input_example=m_X_train.head(5)' in code  # raw training rows, not encoded columns
+    assert 'skops.io.get_untrusted_types' in code
+    assert 'm_registered.registered_model_version' in code
 
 
 def test_runtime_requirements() -> None:

@@ -133,7 +133,7 @@ def test_filter_type_checking_accepts_valid_expressions() -> None:
         (DATA + 'transform d { filter f(a) }', 'function calls and lists', (2, 22)),
         (DATA + 'features d { a }\nfeatures d { b }', 'already declared', (3, 1)),
         (DATA + 'features d { }', 'at least one column', (2, 1)),
-        ('model m = xgboost', "unknown algorithm 'xgboost'", (1, 1)),
+        ('model m = svm', "unknown algorithm 'svm'", (1, 1)),
         ('model m = random_forest { depth = 3 }', "has no parameter 'depth'", (1, 27)),
         ('model m = random_forest { trees = 0 }', "'trees' must be greater than 0", (1, 35)),
         ('model m = random_forest { trees = 1.5 }', "'trees' must be an integer", (1, 35)),
@@ -241,6 +241,33 @@ def test_filter_type_checking_accepts_valid_expressions() -> None:
             DATA + 'model m = random_forest\ntrain m { target = y }\nevaluate m { top = 1 }',
             "evaluate has no parameter 'top'",
             (4, 14),
+        ),
+        (
+            DATA + 'model m = random_forest\nregister m',
+            "model 'm' must be trained before it is registered",
+            (3, 1),
+        ),
+        (
+            DATA + 'features d { a }\nmodel m = random_forest\ntrain m { target = y }\n'
+            'register m\nregister m',
+            "model 'm' is already registered at line 5",
+            (6, 1),
+        ),
+        (
+            DATA + 'features d { a }\nmodel m = random_forest\ntrain m { target = y }\n'
+            'register m { name = 5 }',
+            "'name' must be a non-empty string",
+            (5, 21),
+        ),
+        (
+            DATA + 'transform d { fill a = x + 1 }',
+            'fill values must be constants',
+            (2, 26),
+        ),
+        (
+            DATA + 'transform d { fill a = 0, a = 1 }',
+            "column 'a' is listed twice",
+            (2, 27),
         ),
     ],
 )

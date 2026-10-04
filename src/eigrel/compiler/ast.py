@@ -93,7 +93,18 @@ class SelectOp(Node):
     columns: tuple[Name, ...]
 
 
-TransformOp = FilterOp | SelectOp
+@dataclass(frozen=True)
+class FillOp(Node):
+    values: tuple[Param, ...]
+
+
+@dataclass(frozen=True)
+class DropMissingOp(Node):
+    # Empty means any column.
+    columns: tuple[Name, ...]
+
+
+TransformOp = FilterOp | SelectOp | FillOp | DropMissingOp
 
 
 # Statements
@@ -136,7 +147,15 @@ class EvaluateStmt(Node):
     params: tuple[Param, ...]
 
 
-Statement = DatasetDecl | TransformDecl | FeaturesDecl | ModelDecl | TrainStmt | EvaluateStmt
+@dataclass(frozen=True)
+class RegisterStmt(Node):
+    model: str
+    params: tuple[Param, ...]
+
+
+Statement = (
+    DatasetDecl | TransformDecl | FeaturesDecl | ModelDecl | TrainStmt | EvaluateStmt | RegisterStmt
+)
 
 
 @dataclass(frozen=True)

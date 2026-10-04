@@ -28,6 +28,7 @@ class Parser:
             'model': self._model,
             'train': self._train,
             'evaluate': self._evaluate,
+            'register': self._register,
         }
 
     def parse_program(self) -> ast.Program:
@@ -77,9 +78,30 @@ class Parser:
             while self._match(TokenKind.COMMA):
                 columns.append(self._column())
             return ast.SelectOp(tuple(columns), loc=token.loc)
+        if token.is_keyword('fill'):
+            self._advance()
+            values = [self._assignment()]
+            while self._match(TokenKind.COMMA):
+                values.append(self._assignment())
+            return ast.FillOp(tuple(values), loc=token.loc)
+        if token.is_keyword('drop_missing'):
+            self._advance()
+            columns = []
+            if self._check(TokenKind.IDENT):
+                columns.append(self._column())
+                while self._match(TokenKind.COMMA):
+                    columns.append(self._column())
+            return ast.DropMissingOp(tuple(columns), loc=token.loc)
         raise ParseError(
-            f"expected 'filter', 'select' or '}}', found {token.describe()}", token.loc
+            "expected 'filter', 'select', 'fill', 'drop_missing' or '}}',"
+            f' found {token.describe()}',
+            token.loc,
         )
+
+    def _assignment(self) -> ast.Param:
+        column = self._column()
+        self._expect(TokenKind.ASSIGN, f"'=' after '{column.value}'")
+        return ast.Param(column.value, self._expression(), loc=column.loc)
 
     def _features(self) -> ast.FeaturesDecl:
         loc = self._expect_keyword('features').loc
@@ -108,6 +130,12 @@ class Parser:
         loc = self._expect_keyword('evaluate').loc
         model = self._expect(TokenKind.IDENT, 'a model name').text
         return ast.EvaluateStmt(model, self._param_block(), loc=loc)
+
+    def _register(self) -> ast.RegisterStmt:
+        loc = self._expect_keyword('register').loc
+        model = self._expect(TokenKind.IDENT, 'a model name').text
+        params = self._param_block() if self._check(TokenKind.LBRACE) else ()
+        return ast.RegisterStmt(model, params, loc=loc)
 
     def _param_block(self) -> tuple[ast.Param, ...]:
         self._expect(TokenKind.LBRACE, "'{'")
