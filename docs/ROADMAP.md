@@ -25,12 +25,15 @@ does around it.
 | 0.5 – 0.6 | ML | `fill`, `drop_missing`, XGBoost, MLflow `register`, leak-free encoding pipeline, Spark parity, `check --json`, [`llms.txt`](../llms.txt) |
 | 0.7 | Plan | `eigrel plan`: schema inference, schema contracts, row counts, class balance, findings with codes, `--json`, `.eigstate` with drift detection |
 
+Since 0.7: `eigrel mcp` (an MCP server exposing check, plan, compile and ir to agents), a GitHub
+Action and a pre-commit hook, and the [mistakes gallery](MISTAKES.md).
+
 ## Next
 
 | Version | Theme | Scope |
 |---|---|---|
 | 0.8 | Guarantees | `predict` that must reuse the training pipeline (train/serve skew becomes a compile error); `assumptions { time = ... }` and temporal leakage checks; a capability matrix per backend with clear errors; labels decoded inside the registered model |
-| 0.9 | Agents | MCP server exposing check, plan, compile and run as tools; few-shot examples in `llms.txt` |
+| 0.9 | Agents | Few-shot examples in `llms.txt`; `run` for agents behind an explicit opt-in |
 | 1.0 | Stable | Grammar and JSON contracts frozen under semantic versioning; complete documentation |
 
 ## Out of scope

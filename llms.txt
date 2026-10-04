@@ -40,6 +40,9 @@ Example error object:
 }
 ```
 
+If your client speaks MCP, `eigrel mcp` serves the same loop as tools (`eigrel_check`,
+`eigrel_plan`, `eigrel_compile`, `eigrel_ir`); they never run or train anything.
+
 The compiler is the source of truth: if `check` passes, generated code is deterministic and
 never invents columns, parameters or algorithms.
 
@@ -171,6 +174,8 @@ register churn {
 
 ## Files and links
 
+- [Mistakes the compiler catches](https://github.com/thentsation/eigrel/blob/main/docs/MISTAKES.md):
+  real programs that must not compile, each with the exact diagnostic to expect.
 - [Language reference](https://github.com/thentsation/eigrel/blob/main/docs/LANGUAGE.md): the
   human-facing version of the syntax, including backend differences.
 - [Examples](https://github.com/thentsation/eigrel/tree/main/examples): minimal programs,

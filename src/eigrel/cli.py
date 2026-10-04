@@ -8,7 +8,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from eigrel import __version__, planner
+from eigrel import __version__, mcp, planner
 from eigrel.backends import UnsupportedError
 from eigrel.backends import python as python_backend
 from eigrel.backends import spark as spark_backend
@@ -207,6 +207,10 @@ def cmd_plan(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_mcp(args: argparse.Namespace) -> int:
+    return mcp.main()
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     root = Path(args.name)
     if root.exists():
@@ -280,6 +284,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     command('ast', 'print the syntax tree as JSON', cmd_ast).add_argument('file', metavar='FILE')
     command('tokens', 'print the tokens of a file', cmd_tokens).add_argument('file', metavar='FILE')
+    command('mcp', 'serve check, plan and compile to AI agents over MCP (stdio)', cmd_mcp)
     command('init', 'create a new Eigrel project', cmd_init).add_argument('name', metavar='NAME')
     return parser
 

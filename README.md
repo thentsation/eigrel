@@ -107,6 +107,27 @@ plans report drift (removed columns, changed types, row counts). `--json` gives 
 tools and agents, `--target spark` applies Spark's limits, and `--strict` turns warnings into a
 failing exit code for CI.
 
+More of what the compiler and the plan catch, with the exact output, is in
+[**Mistakes the compiler catches**](docs/MISTAKES.md): dropped columns, metrics for the wrong task,
+filters that compare a number with text, training on columns with gaps.
+
+## Why a language, and why not just a library
+
+You do not have to leave pandas and scikit-learn: Eigrel generates them, and the generated code is
+plain Python you can read, run and keep (`eigrel compile`). What the language buys is a program
+small enough to be *proved* instead of *tested*:
+
+| | Notebook / scripts | Validation libraries (Pandera, Great Expectations) | Pipeline frameworks (Kedro, ZenML, Metaflow) | Eigrel |
+|---|---|---|---|---|
+| Catches target leakage before running | No | No | No | Yes, compile error |
+| Checks columns and types before any code runs | No | At run time, on the data | No | Yes, `check` and `plan` |
+| Shows row counts and class balance before training | No | No | No | Yes, `plan` |
+| Same pipeline on pandas and Spark | Rewrite | Not their job | Rewrite the steps | One program, `--target` |
+| Reviewing a change | Read the code and guess | Read the code and the checks | Read the code | Read a plan |
+
+Eigrel is deliberately narrow: tabular data, classification and regression, no loops, no
+variables, no functions. That restraint is the point; it is why the compiler can prove things.
+
 ## Status
 
 Eigrel 0.7 reads CSV, Parquet, JSON, SQL databases and BigQuery, cleans missing values, trains
@@ -145,6 +166,7 @@ churn: random_forest classification, trained on 315 rows, validated on 79
 | `eigrel ir FILE` | Prints the intermediate representation |
 | `eigrel ast FILE` | Prints the syntax tree as JSON |
 | `eigrel tokens FILE` | Prints the token stream |
+| `eigrel mcp` | Serves check, plan and compile to AI agents over [MCP](#use-it-with-ai-agents) (stdio, no extra dependencies) |
 | `eigrel init NAME` | Creates a project with a starter program and sample data |
 
 The compiler catches mistakes before anything runs, and points at the exact spot:
@@ -228,6 +250,44 @@ eigrel compile --target spark churn/main.eig -o churn_spark.py   # e.g. for spar
 Files are read natively, `sql()` through JDBC and `bigquery()` through the spark-bigquery connector,
 and models train with Spark MLlib. See [the Spark backend](docs/LANGUAGE.md#spark-backend) for how
 it differs from the Python backend.
+
+### Use it with AI agents
+
+Eigrel is a good target for LLMs: the program is tiny, and the compiler proves it before anything
+runs. `eigrel mcp` serves `eigrel_check`, `eigrel_plan`, `eigrel_compile` and `eigrel_ir` over the
+[Model Context Protocol](https://modelcontextprotocol.io), so an agent writes a program, reads the
+exact line and column of every mistake, and sees what the pipeline does to your real data, without
+ever being able to train anything. Add it to any MCP client:
+
+```json
+{ "mcpServers": { "eigrel": { "command": "eigrel", "args": ["mcp"] } } }
+```
+
+Agents that cannot speak MCP can read [`llms.txt`](llms.txt) and call `eigrel check --json` and
+`eigrel plan --json` instead.
+
+### In pull requests and pre-commit
+
+A GitHub Action checks every `.eig` file, and with `plan: true` also reads your data and fails the
+pull request on errors (or, with `strict`, on warnings such as class imbalance):
+
+```yaml
+- uses: actions/checkout@v7
+- uses: thentsation/eigrel@main  # pin a release tag once one includes the action
+  with:
+    files: 'pipelines/*.eig'
+    plan: true
+```
+
+As a [pre-commit](https://pre-commit.com) hook:
+
+```yaml
+repos:
+  - repo: https://github.com/thentsation/eigrel
+    rev: main  # pin a release tag once one includes the hook
+    hooks:
+      - id: eigrel-check
+```
 
 ### Docker
 

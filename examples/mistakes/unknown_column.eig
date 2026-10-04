@@ -1,0 +1,26 @@
+# Using a column that an earlier step dropped.
+#
+# In a notebook this is a KeyError after the load and the cleaning have already run. Eigrel follows
+# the columns through every step, lists the ones that exist at that point and points at the culprit.
+#
+#   eigrel check examples/mistakes/unknown_column.eig
+
+dataset customers from csv("../data/customers.csv")
+
+transform customers {
+    select age, purchases, churned
+}
+
+features customers {
+    age
+    income
+    purchases
+}
+
+model churn = random_forest {
+    trees = 100
+}
+
+train churn {
+    target = churned
+}

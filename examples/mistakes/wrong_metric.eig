@@ -1,0 +1,27 @@
+# A regression metric on a classifier.
+#
+# Accuracy and RMSE answer different questions. A notebook computes whichever you call and the
+# number looks plausible; Eigrel knows the task of the model and refuses the mismatch.
+#
+#   eigrel check examples/mistakes/wrong_metric.eig
+
+dataset customers from csv("../data/customers.csv")
+
+features customers {
+    age
+    income
+    purchases
+}
+
+model churn = random_forest {
+    task = classification
+    trees = 100
+}
+
+train churn {
+    target = churned
+}
+
+evaluate churn {
+    metrics = [accuracy, rmse]
+}

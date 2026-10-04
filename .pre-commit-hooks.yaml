@@ -1,0 +1,6 @@
+- id: eigrel-check
+  name: eigrel check
+  description: Check Eigrel programs for syntax and semantic errors.
+  entry: eigrel check
+  language: python
+  files: \.eig$

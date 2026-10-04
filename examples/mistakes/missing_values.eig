@@ -1,0 +1,22 @@
+# Training on a column that has gaps.
+#
+# scikit-learn raises "Input contains NaN" at fit time, after the split and the encoding. The plan
+# reads the data and counts the missing values first, then tells you the fix:
+#
+#   eigrel plan examples/mistakes/missing_values.eig
+
+dataset accounts from csv("../data/accounts.csv")
+
+features accounts {
+    age
+    income
+    tenure
+}
+
+model churn = logistic_regression {
+    max_iter = 200
+}
+
+train churn {
+    target = churned
+}

@@ -1,0 +1,67 @@
+name: Eigrel
+description: Check Eigrel programs and plan what they do to your data in every pull request.
+author: Nathan Souza
+branding:
+  icon: check-circle
+  color: blue
+
+inputs:
+  files:
+    description: Space-separated .eig files or globs to check, relative to the repository.
+    default: '**/*.eig'
+  plan:
+    description: Also run `eigrel plan` on the files that have data to read (true or false).
+    default: 'false'
+  strict:
+    description: With plan, fail on warnings too, such as class imbalance (true or false).
+    default: 'true'
+  extras:
+    description: Extras of the eigrel package to install, e.g. python,sql. `plan` needs python.
+    default: python
+  version:
+    description: Version of eigrel to install; empty means the latest release.
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      with:
+        python-version: '3.13'
+        activate-environment: true
+
+    - name: Install eigrel
+      shell: bash
+      env:
+        EXTRAS: ${{ inputs.extras }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        spec="eigrel[$EXTRAS]"
+        if [ -n "$VERSION" ]; then spec="$spec==$VERSION"; fi
+        uv pip install "$spec"
+
+    - name: Check programs
+      shell: bash
+      env:
+        FILES: ${{ inputs.files }}
+        PLAN: ${{ inputs.plan }}
+        STRICT: ${{ inputs.strict }}
+      run: |
+        shopt -s globstar nullglob
+        programs=()
+        for pattern in $FILES; do
+          for file in $pattern; do programs+=("$file"); done
+        done
+        if [ "${#programs[@]}" -eq 0 ]; then
+          echo "No .eig files match: $FILES"
+          exit 0
+        fi
+        eigrel check "${programs[@]}"
+        if [ "$PLAN" = "true" ]; then
+          flags=()
+          if [ "$STRICT" = "true" ]; then flags+=(--strict); fi
+          for program in "${programs[@]}"; do
+            eigrel plan "${flags[@]}" "$program"
+          done
+        fi

@@ -1,0 +1,21 @@
+# Evaluating a model that was never trained.
+#
+# A notebook gets a NameError or, worse, evaluates a stale model from an earlier cell.
+# Eigrel orders the pipeline for you and rejects the impossible one.
+#
+#   eigrel check examples/mistakes/evaluate_before_train.eig
+
+dataset customers from csv("../data/customers.csv")
+
+features customers {
+    age
+    income
+}
+
+model churn = random_forest {
+    trees = 100
+}
+
+evaluate churn {
+    metrics = [accuracy]
+}

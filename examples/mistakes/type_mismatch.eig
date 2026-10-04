@@ -1,0 +1,12 @@
+# Comparing a number with text.
+#
+# pandas raises deep in the stack, or compares as text and silently keeps the wrong rows. The
+# plan reads the real column types and rejects the filter before anything runs:
+#
+#   eigrel plan examples/mistakes/type_mismatch.eig
+
+dataset customers from csv("../data/customers.csv")
+
+transform customers {
+    filter age >= "18"
+}
