@@ -142,7 +142,8 @@ register churn {
 
 `register` logs the parameters, metrics and model to MLflow and registers a new version; the
 registered model takes raw rows, because encoding is part of its pipeline. It needs the `xgboost`
-and `mlflow` extras (`pip install "eigrel[python,xgboost,mlflow]"`). See
+and `mlflow` extras (`pip install "eigrel[python,xgboost,mlflow]"`; on macOS XGBoost also needs
+OpenMP: `brew install libomp`). See
 [`examples/mlflow.eig`](examples/mlflow.eig).
 
 ### Spark
