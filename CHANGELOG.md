@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.0.0 (2026-10-04)
+
+### Features
+
+- Eigrel 1.0 with stable grammar, CLI and JSON contracts
+  ([#16](https://github.com/thentsation/eigrel/pull/16),
+  [`b20505a`](https://github.com/thentsation/eigrel/commit/b20505a795a705d54ba86f6084fc0ce961d3818a))
+
+
 ## v0.9.0 (2026-10-04)
 
 ### Features
