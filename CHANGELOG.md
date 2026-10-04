@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v0.4.0 (2026-10-04)
+
+### Documentation
+
+- Run the container image as the calling user ([#6](https://github.com/thentsation/eigrel/pull/6),
+  [`8455598`](https://github.com/thentsation/eigrel/commit/8455598f6b5b31cbf3629bebbe68045cf0b96710))
+
+### Features
+
+- Eigrel v0.4 Spark backend ([#7](https://github.com/thentsation/eigrel/pull/7),
+  [`fbfa13e`](https://github.com/thentsation/eigrel/commit/fbfa13e6ed3ce0e9a89c151a333abadce971aa5b))
+
+
 ## v0.3.0 (2026-10-04)
 
 ### Continuous Integration
