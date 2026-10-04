@@ -9,3 +9,7 @@ class Requirement:
 
     module: str
     extra: str
+
+
+class UnsupportedError(Exception):
+    """The program is valid, but this backend cannot express part of it."""

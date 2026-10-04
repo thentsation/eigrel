@@ -4,7 +4,7 @@ build-backend = 'setuptools.build_meta'
 
 [project]
 name = 'eigrel'
-version = "0.5.0"
+version = "0.4.0"
 description = 'A programming language for Data, Machine Learning and AI.'
 readme = 'README.md'
 requires-python = '>=3.13'
@@ -32,6 +32,9 @@ sql = ['sqlalchemy>=2.1,<2.2']
 bigquery = ['google-cloud-bigquery>=3.46,<4', 'db-dtypes>=1.7,<2']
 # `eigrel run --target spark`; Spark also needs Java 17 or newer.
 spark = ['pyspark>=4.2,<4.3']
+# `model ... = xgboost` and `register` (MLflow).
+xgboost = ['xgboost>=3.4,<4']
+mlflow = ['mlflow>=3.16,<4']
 
 [project.urls]
 Homepage = 'https://github.com/thentsation/eigrel'

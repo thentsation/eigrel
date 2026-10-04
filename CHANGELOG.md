@@ -2,15 +2,6 @@
 
 <!-- version list -->
 
-## v0.5.0 (2026-10-04)
-
-### Features
-
-- Eigrel v0.5 data pipeline, MLflow registration and agent checks
-  ([#9](https://github.com/thentsation/eigrel/pull/9),
-  [`17d956a`](https://github.com/thentsation/eigrel/commit/17d956a612144a888bbd4290435a384b0ff45fd8))
-
-
 ## v0.4.0 (2026-10-04)
 
 ### Documentation

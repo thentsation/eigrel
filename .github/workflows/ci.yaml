@@ -64,6 +64,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install OpenMP (XGBoost needs it on macOS)
+        if: runner.os == 'macOS'
+        run: brew install libomp
+
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
@@ -84,6 +88,7 @@ jobs:
           eigrel run examples/ml.eig
           eigrel run examples/regression.eig
           eigrel run examples/sql.eig
+          eigrel run examples/mlflow.eig
 
   spark:
     name: spark
@@ -108,7 +113,7 @@ jobs:
           activate-environment: true
 
       - name: Install dependencies
-        run: uv pip install -r config/requirements-dev.txt -e '.[python,sql,spark]'
+        run: uv pip install -r config/requirements-dev.txt -e '.[python,sql,spark,xgboost]'
 
       - name: Run Spark tests
         run: pytest -m spark -v
@@ -118,6 +123,7 @@ jobs:
           eigrel run --target spark examples/ml.eig
           eigrel run --target spark examples/regression.eig
           eigrel run --target spark examples/sql.eig
+          eigrel run --target spark examples/mlflow.eig
 
   audit:
     name: audit
@@ -133,4 +139,4 @@ jobs:
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
       - name: Audit locked dependencies
-        run: uvx pip-audit==2.10.1 -r config/requirements.lock
+        run: uvx --python 3.14 pip-audit==2.10.1 -r config/requirements.lock

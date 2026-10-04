@@ -6,7 +6,7 @@
 | v0.2 | Compiler | Semantic analysis, Eigrel IR, execution graph, Python backend | ✅ done |
 | v0.3 | Data | CSV, Parquet, JSON, SQL databases, BigQuery, `env()` secrets, SQL backend | ✅ done |
 | v0.4 | Spark | Spark backend: PySpark for data operations, Spark MLlib for training | ✅ done |
-| v0.5 | ML | Features, models, training, evaluation, MLflow (`register`) | |
+| v0.5 | ML | `fill` / `drop_missing`, XGBoost, MLflow `register`, leak-free encoding pipeline, Spark parity | ✅ done |
 | v0.6 | Optimizer | Filter/projection pushdown, CSE, DAG optimization, backend selection, execution planning | |
 | v0.7 | GenAI | Embeddings, vector stores, RAG (`knowledge`, `assistant`), LLMs, evaluation | |
 | v0.8 | Agents | Tools, agents, workflows, multi-agent pipelines | |

@@ -12,8 +12,8 @@ code. Every rule below is reported at compile time, with the line and column of 
 - **Strings**: `"..."` or `'...'`, single line, escapes `\n \t \\ \" \'`.
 - **Booleans**: `true`, `false`.
 
-Reserved keywords: `dataset from transform filter select features model train evaluate and or not
-true false`. Inside parameter blocks keywords may be used as parameter names
+Reserved keywords: `dataset from transform filter select fill drop_missing features model train
+evaluate register and or not true false`. Inside parameter blocks keywords may be used as parameter names
 (e.g. `model = "llm"`).
 
 ## Statements
@@ -21,16 +21,19 @@ true false`. Inside parameter blocks keywords may be used as parameter names
 ```text
 program     := statement*
 
-statement   := dataset | transform | features | model | train | evaluate
+statement   := dataset | transform | features | model | train | evaluate | register
 
 dataset     := 'dataset' IDENT 'from' call
 transform   := 'transform' IDENT '{' transform_op* '}'
 transform_op:= 'filter' expr
              | 'select' IDENT (',' IDENT)*
+             | 'fill' IDENT '=' literal (',' IDENT '=' literal)*
+             | 'drop_missing' (IDENT (',' IDENT)*)?
 features    := 'features' IDENT '{' (IDENT ','?)* '}'
 model       := 'model' IDENT '=' IDENT params?
 train       := 'train' IDENT params
 evaluate    := 'evaluate' IDENT params
+register    := 'register' IDENT params?
 
 params      := '{' (NAME '=' expr ','?)* '}'      # NAME is an identifier or keyword; no duplicates
 ```
@@ -87,27 +90,22 @@ when the URL comes from `env()`. Models are not part of the SQL output.
 which columns exist; after one, every column used later (in `filter`, `features` or `target`) must
 be among the selected columns.
 
-```text
-transform D {
-    fill income = 0, city = "unknown"      // literals for missing values
-    drop_missing age, purchases            // drop rows missing in these columns...
-    drop_missing                            // ...or in any column
-    filter age >= 18
-    select age, income, purchases
-}
-```
-
 `filter` takes a boolean expression. Operands are type checked: arithmetic needs numbers, `and`,
 `or` and `not` need booleans, and comparisons need values of the same type. Function calls and
-lists are not allowed in filters. `fill` takes `column = literal` pairs (numbers, strings or
-booleans); `drop_missing` takes an optional column list.
+lists are not allowed in filters.
+
+### Missing values
+
+`fill col = value, ...` replaces missing values in the listed columns with constants (numbers,
+strings or booleans). `drop_missing a, b` removes rows where any listed column is missing;
+`drop_missing` alone removes rows with a missing value in any column. Columns are checked like in
+`select`. In SQL, `fill` becomes `COALESCE` and `drop_missing` becomes `IS NOT NULL`; SQL needs to
+know the columns, so select them first when the compiler asks.
 
 ### Features
 
 `features D { ... }` declares the input columns used to train on dataset `D`, once per dataset.
-Without it, a model trains on every column except the target. Categorical columns are one-hot
-encoded by the trained model itself, so the same model transforms raw data later (see
-Registration).
+Without it, a model trains on every column except the target. Text columns are one-hot encoded.
 
 ### Models
 
@@ -146,6 +144,10 @@ train MODEL { target = COLUMN, data = DATASET, validation = 0.2, seed = 42 }
 A model is trained once, and only after its data is declared. Classification splits are stratified
 when every class has at least two rows.
 
+Text features are one-hot encoded inside the model's pipeline, fitted on the training split only,
+so the validation split never leaks into the encoding, categories unseen in training are ignored,
+and the trained model accepts raw rows.
+
 ### Evaluation
 
 `evaluate MODEL { metrics = [...] }` scores a trained model on its validation split. Without
@@ -159,21 +161,13 @@ rmse and r2.
 
 Precision, recall and f1 use the binary average for 0/1 targets and the weighted average otherwise.
 
-## Registration
+### Registering models
 
-```text
-register MODEL { name = "customer-churn", experiment = "eigrel-examples" }
-```
-
-Logs the trained model and its last evaluation to MLflow and registers a model version. `name`
-defaults to the model's name; `experiment` is optional. Requires the `mlflow` package
-(`pip install mlflow`); without a tracking server, runs are stored in `./mlruns` next to the
-program.
-
-The registered artifact is the whole pipeline — preprocessing and estimator trained together on
-the training rows only — so the model version accepts the raw columns the program trained on and
-applies every transform itself. Categories unseen in training are ignored instead of failing.
-Python backend only; `register` is not available on Spark yet.
+`register MODEL { name = "...", experiment = "..." }` logs a trained model to MLflow and registers
+it in the model registry: the training parameters, the metrics of the latest `evaluate` before it
+(if any), and the model itself, which takes raw rows. Both parameters are optional (`name` defaults
+to the model's name). MLflow uses `MLFLOW_TRACKING_URI`, or `mlflow.db` next to the program when it
+is unset. Needs the `mlflow` extra.
 
 ## Spark backend
 
@@ -187,7 +181,10 @@ with Spark MLlib. It runs locally (`local[*]`) or under `spark-submit` on a clus
 | `bigquery(table)` | the spark-bigquery connector (downloaded from Maven Central) |
 | `random_forest`, `decision_tree` | `RandomForest*`, `DecisionTree*` (`trees` → `numTrees`, `max_depth` → `maxDepth`, `min_samples_leaf` → `minInstancesPerNode`) |
 | `gradient_boosting` | `GBT*` (`trees` → `maxIter`, `learning_rate` → `stepSize`) |
+| `xgboost` | `SparkXGBClassifier`, `SparkXGBRegressor` from `xgboost.spark` |
 | `logistic_regression` | `LogisticRegression` (`max_iter` → `maxIter`, `c` → `regParam = 1 / c`) |
+| `fill`, `drop_missing` | `DataFrame.fillna`, `DataFrame.dropna` |
+| `register` | `mlflow.spark.log_model` |
 | `linear_regression` | `LinearRegression` |
 
 Differences from the Python backend, so results are close but not identical:

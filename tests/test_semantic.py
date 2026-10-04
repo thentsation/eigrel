@@ -133,7 +133,7 @@ def test_filter_type_checking_accepts_valid_expressions() -> None:
         (DATA + 'transform d { filter f(a) }', 'function calls and lists', (2, 22)),
         (DATA + 'features d { a }\nfeatures d { b }', 'already declared', (3, 1)),
         (DATA + 'features d { }', 'at least one column', (2, 1)),
-        ('model m = svm', "unknown algorithm 'svm'", (1, 1)),
+        ('model m = catboost', "unknown algorithm 'catboost'", (1, 1)),
         ('model m = random_forest { depth = 3 }', "has no parameter 'depth'", (1, 27)),
         ('model m = random_forest { trees = 0 }', "'trees' must be greater than 0", (1, 35)),
         ('model m = random_forest { trees = 1.5 }', "'trees' must be an integer", (1, 35)),
@@ -237,37 +237,41 @@ def test_filter_type_checking_accepts_valid_expressions() -> None:
             "metric 'f1' is listed twice",
             (4, 29),
         ),
+        (DATA + 'transform d { fill a = b }', 'fill values must be constants', (2, 24)),
+        (DATA + 'transform d { fill a = 1, a = 2 }', "column 'a' is listed twice", (2, 27)),
+        (SELECTED + 'transform d { fill z = 1 }', "column 'z' does not exist here", (3, 20)),
+        (SELECTED + 'transform d { drop_missing a, z }', "column 'z' does not exist here", (3, 31)),
+        (DATA + 'transform d { drop_missing a, a }', "column 'a' is listed twice", (2, 31)),
+        ('register m', "unknown model 'm'", (1, 1)),
+        (
+            DATA + 'model m = random_forest\nregister m',
+            'must be trained before it is registered',
+            (3, 1),
+        ),
+        (
+            DATA + 'model m = random_forest\ntrain m { target = y }\nregister m\nregister m',
+            'already registered at line 4',
+            (5, 1),
+        ),
+        (
+            DATA + 'model m = random_forest\ntrain m { target = y }\nregister m { stage = 1 }',
+            "register has no parameter 'stage'",
+            (4, 14),
+        ),
+        (
+            DATA + 'model m = random_forest\ntrain m { target = y }\nregister m { name = "" }',
+            "'name' must be a non-empty string",
+            (4, 21),
+        ),
+        (
+            DATA + 'model m = random_forest\ntrain m { target = y }\nregister m { experiment = x }',
+            "'experiment' must be a non-empty string",
+            (4, 27),
+        ),
         (
             DATA + 'model m = random_forest\ntrain m { target = y }\nevaluate m { top = 1 }',
             "evaluate has no parameter 'top'",
             (4, 14),
-        ),
-        (
-            DATA + 'model m = random_forest\nregister m',
-            "model 'm' must be trained before it is registered",
-            (3, 1),
-        ),
-        (
-            DATA + 'features d { a }\nmodel m = random_forest\ntrain m { target = y }\n'
-            'register m\nregister m',
-            "model 'm' is already registered at line 5",
-            (6, 1),
-        ),
-        (
-            DATA + 'features d { a }\nmodel m = random_forest\ntrain m { target = y }\n'
-            'register m { name = 5 }',
-            "'name' must be a non-empty string",
-            (5, 21),
-        ),
-        (
-            DATA + 'transform d { fill a = x + 1 }',
-            'fill values must be constants',
-            (2, 26),
-        ),
-        (
-            DATA + 'transform d { fill a = 0, a = 1 }',
-            "column 'a' is listed twice",
-            (2, 27),
         ),
     ],
 )
@@ -290,6 +294,28 @@ def test_sources_are_lowered_with_their_arguments() -> None:
         ('my-project.shop.users',),
         ('events.jsonl',),
     ]
+
+
+def test_cleaning_and_register_are_lowered() -> None:
+    graph = ops(
+        DATA
+        + 'transform d { fill a = -1.5, b = "x", c = false\n drop_missing a\n drop_missing }\n'
+        + 'model m = xgboost { trees = 5, learning_rate = 0.3, max_depth = 2 }\n'
+        + 'train m { target = y }\nregister m\nevaluate m {}\n'
+    )
+    fill, drop_some, drop_all = graph[1], graph[2], graph[3]
+    assert fill == ir.Fill(1, 'd', 0, (('a', -1.5), ('b', 'x'), ('c', False)))
+    assert drop_some == ir.DropMissing(2, 'd', 1, ('a',))
+    assert drop_all == ir.DropMissing(3, 'd', 2, None)
+    assert graph[5] == ir.Register(5, 'm', 4, 'm', None, None)  # registered before evaluating
+
+
+def test_register_logs_the_latest_evaluation() -> None:
+    graph = ops(
+        DATA + 'model m = linear_regression\ntrain m { target = y }\nevaluate m {}\n'
+        'evaluate m { metrics = [r2] }\nregister m { name = "prices", experiment = "shop" }'
+    )
+    assert graph[-1] == ir.Register(4, 'm', 1, 'prices', 'shop', 3)
 
 
 def test_negative_float_parameter_is_rejected() -> None:

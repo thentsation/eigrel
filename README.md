@@ -42,10 +42,10 @@ evaluate churn {
 
 ## Status
 
-Eigrel is at **v0.4 — Spark**: programs read CSV, Parquet, JSON, SQL databases and BigQuery, are
-checked for meaning, lowered into an intermediate representation and compiled to Python (pandas +
-scikit-learn), Apache Spark (PySpark + MLlib) or SQL. The same program runs on your laptop or on a
-Spark cluster. Next up: MLflow and more ML (v0.5). See the [roadmap](docs/ROADMAP.md).
+Eigrel is at **v0.5 — ML**: programs read CSV, Parquet, JSON, SQL databases and BigQuery, clean
+missing values, train scikit-learn, XGBoost or Spark MLlib models and register them in MLflow. They
+are checked for meaning before anything runs and compiled to Python, Apache Spark or SQL, so the
+same program runs on your laptop or on a Spark cluster. See the [roadmap](docs/ROADMAP.md).
 
 ## Getting started
 
@@ -72,7 +72,7 @@ churn: random_forest classification, trained on 315 rows, validated on 79
 | Command | What it does |
 |---|---|
 | `eigrel run FILE [-t python\|spark]` | Compiles the program and runs it (default: Python) |
-| `eigrel check FILE... [--json]` | Reports syntax and semantic errors with line and column (`--json`: machine-readable) |
+| `eigrel check FILE...` | Reports syntax and semantic errors with line and column |
 | `eigrel compile FILE [-t python\|spark\|sql] [-o PATH]` | Prints (or writes) the generated code |
 | `eigrel ir FILE` | Prints the intermediate representation |
 | `eigrel ast FILE` | Prints the syntax tree as JSON |
@@ -122,6 +122,30 @@ source lives in:
 SELECT `age`, `income`, `country` FROM `project.dataset.users` WHERE ((`age` > 18) AND (`income` <> 0));
 ```
 
+### Cleaning data, XGBoost and MLflow
+
+```eigrel
+transform customers {
+    fill income = 0
+    drop_missing age, purchases
+}
+
+model churn = xgboost {
+    trees = 200
+    learning_rate = 0.05
+}
+
+register churn {
+    name = "customer-churn"
+}
+```
+
+`register` logs the parameters, metrics and model to MLflow and registers a new version; the
+registered model takes raw rows, because encoding is part of its pipeline. It needs the `xgboost`
+and `mlflow` extras (`pip install "eigrel[python,xgboost,mlflow]"`; on macOS XGBoost also needs
+OpenMP: `brew install libomp`). See
+[`examples/mlflow.eig`](examples/mlflow.eig).
+
 ### Spark
 
 The same program runs on Spark with `--target spark`, which needs the `spark` extra and Java 17 or
@@ -151,18 +175,6 @@ eigrel run churn/main.eig
 
 Paths must be inside the current directory, since only it is mounted. To build the image locally,
 use `make docker-build` and `make docker-run`.
-
-### AI agents
-
-Eigrel is designed to be written by AI agents and verified by the compiler. Point your agent at
-[llms.txt](llms.txt) — the complete grammar in one file — and have it loop
-`eigrel check --json FILE.eig` until `"ok": true`; every error comes back with an exact line and
-column, so the fix is mechanical. What passes `check` is guaranteed to compile, and the same
-program runs on a laptop or a Spark cluster.
-
-```bash
-eigrel check --json churn.eig
-```
 
 ## Language
 

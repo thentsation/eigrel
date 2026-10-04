@@ -55,29 +55,17 @@ def test_format_expr_covers_every_expression() -> None:
     assert format_expr(expr) == 'f([1, 2.5], false, "a\\\\b")'
 
 
-def test_format_graph_covers_the_new_ops() -> None:
+def test_format_cleaning_and_register() -> None:
     graph = compile_source(
         'dataset d from csv("d.csv")\n'
-        'transform d {\n'
-        '    fill a = 0, b = "n/a", c = true, e = -1\n'
-        '    drop_missing\n'
-        '    drop_missing a, b\n'
-        '}\n'
-        'features d { a }\n'
-        'model m = random_forest\n'
-        'train m { target = y }\n'
-        'evaluate m { metrics = [accuracy] }\n'
-        'register m { name = "prod", experiment = "exp" }\n'
+        'transform d { fill a = 0, b = "x", c = true\n drop_missing a\n drop_missing }\n'
+        'model m = xgboost\ntrain m { target = y }\nevaluate m {}\n'
+        'register m { name = "churn", experiment = "e" }\n'
+        'model r = linear_regression\ntrain r { target = a }\nregister r'
     )
-    assert format_graph(graph).splitlines() == [
-        '%0 = load csv("d.csv")  # d',
-        '%1 = fill %0 [a = 0, b = "n/a", c = true, e = -1]  # d',
-        '%2 = drop_missing %1 [any column]  # d',
-        '%3 = drop_missing %2 [a, b]  # d',
-        (
-            '%4 = train %3 random_forest() classification features=[a]'
-            ' target=y validation=0.2 seed=42  # m'
-        ),
-        '%5 = evaluate %4 [accuracy]  # m',
-        '%6 = register %4 as "prod" experiment="exp" metrics=%5  # m',
-    ]
+    lines = format_graph(graph).splitlines()
+    assert lines[1] == '%1 = fill %0 [a = 0, b = "x", c = true]  # d'
+    assert lines[2] == '%2 = drop_missing %1 [a]  # d'
+    assert lines[3] == '%3 = drop_missing %2 [any column]  # d'
+    assert lines[6] == '%6 = register %4 as "churn" experiment="e" metrics=%5  # m'
+    assert lines[8] == '%8 = register %7 as "r"  # r'
