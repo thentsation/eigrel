@@ -77,6 +77,8 @@ Every pull request runs these workflows, and all of them must pass:
 | `docker` | The image builds, the CLI runs inside it, and Trivy finds no high or critical issues |
 | `codeql` | CodeQL on the Python code and the workflows, plus [zizmor](https://docs.zizmor.sh/) on the workflows |
 
+On `main`, the `scorecard` workflow also rates the project with [OpenSSF Scorecard](https://scorecard.dev/).
+
 Actions are pinned to commit SHAs; Dependabot proposes updates once a month. When a change touches
 `config/requirements.txt`, run `make lock` and commit the regenerated `config/requirements.lock`,
 which the Docker image and `pip-audit` use. Releases are automatic:
