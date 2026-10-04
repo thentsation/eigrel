@@ -5,7 +5,7 @@ build-backend = 'setuptools.build_meta'
 [project]
 name = 'eigrel'
 version = "0.6.1"
-description = 'A programming language for Data, Machine Learning and AI.'
+description = 'A compiler for tabular machine learning: check the pipeline before it runs, run it on pandas or Spark.'
 readme = 'README.md'
 requires-python = '>=3.13'
 license = 'Apache-2.0'

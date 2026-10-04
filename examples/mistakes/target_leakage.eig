@@ -1,0 +1,31 @@
+# A classic mistake: the target is also one of the features.
+#
+# The same pipeline in a notebook trains without complaint and reports 100% accuracy on
+# validation, because the model just reads the answer. Eigrel refuses to compile it:
+#
+#   eigrel check examples/mistakes/target_leakage.eig
+
+dataset customers from csv("../data/customers.csv")
+
+transform customers {
+    filter age >= 18
+}
+
+features customers {
+    age
+    income
+    purchases
+    churned
+}
+
+model churn = random_forest {
+    trees = 100
+}
+
+train churn {
+    target = churned
+}
+
+evaluate churn {
+    metrics = [accuracy]
+}

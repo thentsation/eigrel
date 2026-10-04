@@ -1,17 +1,19 @@
 # Eigrel
 
-**A programming language for Data, Machine Learning and AI.**
+**A compiler for tabular machine learning.** You declare the pipeline; the compiler checks it
+before anything runs and generates the code for your laptop (pandas + scikit-learn) or your
+cluster (Spark).
 
 [![CI](https://github.com/thentsation/eigrel/actions/workflows/ci.yaml/badge.svg)](https://github.com/thentsation/eigrel/actions/workflows/ci.yaml)
 [![PyPI](https://img.shields.io/pypi/v/eigrel)](https://pypi.org/project/eigrel/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/thentsation/eigrel/badge)](https://scorecard.dev/viewer/?uri=github.com/thentsation/eigrel)
 
-> Write what you want. Let the compiler decide how to run it.
+> You don't review ML code; you review a plan. The compiler proves what it can, the backend runs it.
 
-Eigrel is a declarative language for data engineering, machine learning and GenAI. You describe
-datasets, transformations, features and models in one language; the compiler decides whether each
-step becomes Python, SQL, Spark or something else.
+Eigrel describes datasets, cleaning, features, models, training, evaluation and registration in
+one small language. Because the compiler sees the whole program, it rejects mistakes that a
+notebook runs without complaint, and the same program compiles to Python, Spark or SQL.
 
 ```eigrel
 dataset customers from csv("data/customers.csv")
@@ -40,12 +42,39 @@ evaluate churn {
 }
 ```
 
+## The mistake a notebook misses
+
+Put the target among the features by accident. In a notebook, nothing complains, and validation
+looks perfect:
+
+```python
+X = customers[['age', 'income', 'purchases', 'churned']]   # churned is also the target
+X_train, X_test, y_train, y_test = train_test_split(X, customers['churned'], stratify=customers['churned'], random_state=42)
+RandomForestClassifier(random_state=42).fit(X_train, y_train).score(X_test, y_test)   # 1.0
+```
+
+The same pipeline in Eigrel ([`examples/mistakes/target_leakage.eig`](examples/mistakes/target_leakage.eig))
+does not compile:
+
+```text
+$ eigrel check examples/mistakes/target_leakage.eig
+error: target 'churned' is also declared as a feature of 'customers'
+  --> examples/mistakes/target_leakage.eig:26:14
+   |
+26 |     target = churned
+   |              ^
+```
+
+The honest model scores 0.80 on this data. Good engineers leak data silently; a compiler that sees
+the whole pipeline does not. The generated code is held to the same standard: encoders are fitted
+on the training split only, inside the model, so the validation split never leaks into them.
+
 ## Status
 
-Eigrel is at **v0.5 — ML**: programs read CSV, Parquet, JSON, SQL databases and BigQuery, clean
-missing values, train scikit-learn, XGBoost or Spark MLlib models and register them in MLflow. They
-are checked for meaning before anything runs and compiled to Python, Apache Spark or SQL, so the
-same program runs on your laptop or on a Spark cluster. See the [roadmap](docs/ROADMAP.md).
+Eigrel 0.6 reads CSV, Parquet, JSON, SQL databases and BigQuery, cleans missing values, trains
+scikit-learn, XGBoost or Spark MLlib models and registers them in MLflow, compiling the same program
+to Python, Spark or SQL. Next is `eigrel plan`: see the consequences of a pipeline before running
+it. See the [roadmap](docs/ROADMAP.md).
 
 ## Getting started
 

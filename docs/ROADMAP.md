@@ -1,71 +1,48 @@
 # Roadmap
 
-| Version | Theme | Scope | Status |
-|---|---|---|---|
-| v0.1 | Language | Lexer, parser, AST, basic types, datasets, transformations, CLI | ✅ done |
-| v0.2 | Compiler | Semantic analysis, Eigrel IR, execution graph, Python backend | ✅ done |
-| v0.3 | Data | CSV, Parquet, JSON, SQL databases, BigQuery, `env()` secrets, SQL backend | ✅ done |
-| v0.4 | Spark | Spark backend: PySpark for data operations, Spark MLlib for training | ✅ done |
-| v0.5 | ML | `fill` / `drop_missing`, XGBoost, MLflow `register`, leak-free encoding pipeline, Spark parity | ✅ done |
-| v0.6 | Optimizer | Filter/projection pushdown, CSE, DAG optimization, backend selection, execution planning | |
-| v0.7 | GenAI | Embeddings, vector stores, RAG (`knowledge`, `assistant`), LLMs, evaluation | |
-| v0.8 | Agents | Tools, agents, workflows, multi-agent pipelines | |
-| v1.0 | Platform | Language, compiler, IR, optimizer, runtime, backends, CLI, package manager, registry, VS Code extension, docs | |
+Eigrel aims to be to tabular machine learning what Terraform is to infrastructure: you declare
+intent, the tool shows the consequences before anything runs, and the same program runs on
+different providers. Nobody adopts a language for its syntax; they adopt it for what the tool
+does around it.
 
-## Target architecture
+| Terraform | Eigrel |
+|---|---|
+| HCL | `.eig` programs |
+| Providers | Backends: Python (pandas + scikit-learn), Spark (PySpark + MLlib), SQL ✅ |
+| Validation | `eigrel check` (`--json` for tools and agents) ✅ |
+| `terraform plan` | `eigrel plan`: row counts, schemas, class balance and warnings before running |
+| State and drift | `.eigstate`: schema fingerprints, drift detection |
+| Review in pull requests | A pipeline change is a reviewable diff with proven consequences |
 
-```text
-Eigrel source
-   │
-   ▼
-Lexer → Parser → AST → Semantic analysis → Eigrel IR → Optimizer
-                                                          │
-                                   ┌──────────────────────┼──────────────────────┐
-                                   ▼                      ▼                      ▼
-                              Python ✅               SQL ✅                Spark ✅
-```
+## Released
 
-Later backends: PyTorch, MLIR, BigQuery, cloud runtimes.
+| Version | Theme | Scope |
+|---|---|---|
+| 0.1 | Language | Lexer, parser, AST, CLI |
+| 0.2 | Compiler | Semantic analysis, Eigrel IR, Python backend |
+| 0.3 | Data | CSV, Parquet, JSON, SQL databases, BigQuery, `env()`, SQL backend |
+| 0.4 | Spark | Spark backend: PySpark for data, MLlib for training |
+| 0.5 – 0.6 | ML | `fill`, `drop_missing`, XGBoost, MLflow `register`, leak-free encoding pipeline, Spark parity, `check --json`, [`llms.txt`](../llms.txt) |
 
-## CLI, planned
+## Next
 
-```bash
-eigrel init my-project   # ✅ v0.1 (sample data since v0.2)
-eigrel check             # ✅ v0.2 (syntax and semantics)
-eigrel run               # ✅ v0.2
-eigrel compile file.eig  # ✅ v0.2 (--target sql since v0.3)
-eigrel ir file.eig       # ✅ v0.2
-eigrel build             # planned
-eigrel fmt               # planned
-eigrel add xgboost       # package manager, v1.0
-```
+| Version | Theme | Scope |
+|---|---|---|
+| 0.7 | Plan | Schema inference for every source; `eigrel plan`, human-readable and `--json`: rows in and out of every operation, the schema at each step, target class counts, warnings (imbalance, too few minority rows in validation, missing values the algorithm cannot handle); schema contracts checked with exact locations; `.eigstate` with schema fingerprints and drift detection |
+| 0.8 | Guarantees | `predict` that must reuse the training pipeline (train/serve skew becomes a compile error); `assumptions { time = ... }` and temporal leakage checks; a capability matrix per backend with clear errors; labels decoded inside the registered model |
+| 0.9 | Agents | MCP server exposing check, plan, compile and run as tools; few-shot examples in `llms.txt` |
+| 1.0 | Stable | Grammar and JSON contracts frozen under semantic versioning; complete documentation |
 
-## Future syntax sketches
+## Out of scope
 
-These are design notes, not yet accepted by the parser.
+- GenAI and agents as language features: they are not uniform the way tabular data is, so a small
+  language would get in the way.
+- A general optimizer phase: projection pushdown happens where it matters, in the probes behind
+  `eigrel plan`.
 
-```eigrel
-register churn                      # MLflow
+## Design notes
 
-knowledge company_docs {
-    source = "gs://company/docs"
-    embedding = "text-embedding-model"
-    vectorstore = "pgvector"
-}
-
-assistant support {
-    retrieve company_docs { top = 5 }
-    generate { model = "llm" }
-}
-
-agent analyst {
-    tools = [sql, python, search]
-    model = "llm"
-    goal = "analyze customer behavior"
-}
-
-deploy churn {
-    runtime = cloud_run
-    replicas = 3
-}
-```
+The guarantees come from restraint: the smaller the language, the more the compiler can prove.
+Strong guarantees (a column exists, the target is not a feature, the serving path reuses the
+training pipeline) are errors. Checks that depend on declarations (temporal leakage needs a
+declared time column) say so.
