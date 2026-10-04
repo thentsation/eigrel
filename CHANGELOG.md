@@ -2,6 +2,37 @@
 
 <!-- version list -->
 
+## v0.3.0 (2026-10-04)
+
+### Continuous Integration
+
+- Add OpenSSF Scorecard ([#4](https://github.com/thentsation/eigrel/pull/4),
+  [`bd76175`](https://github.com/thentsation/eigrel/commit/bd76175312e9341ed846d3aba895bce1627baa52))
+
+- Adopt the workflow layout used by major language projects
+  ([`0167358`](https://github.com/thentsation/eigrel/commit/01673582ea58b12a364e858692c6ad2e0f02e286))
+
+- Drop the lockfile and portfolio workflows
+  ([`0cff146`](https://github.com/thentsation/eigrel/commit/0cff146911a72774f6a7c013a8e6c72f94fb0e9e))
+
+- Lint and mypy, tests on Linux, macOS and Windows with Python 3.13
+  ([`0167358`](https://github.com/thentsation/eigrel/commit/01673582ea58b12a364e858692c6ad2e0f02e286))
+
+- Push releases with a deploy key so main can be protected
+  ([`f9dbb66`](https://github.com/thentsation/eigrel/commit/f9dbb66edc44f61ab500e779b241537650d2a492))
+
+### Documentation
+
+- Describe the protected main branch and pull request flow
+  ([#3](https://github.com/thentsation/eigrel/pull/3),
+  [`239fe9b`](https://github.com/thentsation/eigrel/commit/239fe9be9bf28d209ec22a6e605c4cd5f18f9173))
+
+### Features
+
+- Eigrel v0.3 data sources and SQL backend ([#5](https://github.com/thentsation/eigrel/pull/5),
+  [`6a7e42d`](https://github.com/thentsation/eigrel/commit/6a7e42d595b49052815871647c0a48fa788f5aa8))
+
+
 ## v0.2.0 (2026-10-03)
 
 ### Chores
