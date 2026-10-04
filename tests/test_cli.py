@@ -139,14 +139,14 @@ def test_compile_to_spark(examples_dir: Path, capsys: pytest.CaptureFixture[str]
 def test_run_on_spark_needs_pyspark_and_java(
     examples_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from eigrel import cli
+    from eigrel import runner
 
-    monkeypatch.setattr(cli, '_importable', lambda module: module != 'pyspark')
+    monkeypatch.setattr(runner, 'importable', lambda module: module != 'pyspark')
     assert main(['run', '-t', 'spark', str(examples_dir / 'ml.eig')]) == 1
     assert 'pip install "eigrel[spark]"' in capsys.readouterr().err
 
-    monkeypatch.setattr(cli, '_importable', lambda module: True)
-    monkeypatch.setattr(cli, '_has_java', lambda: False)
+    monkeypatch.setattr(runner, 'importable', lambda module: True)
+    monkeypatch.setattr(runner, 'has_java', lambda: False)
     assert main(['run', '-t', 'spark', str(examples_dir / 'ml.eig')]) == 1
     assert 'needs Java 17 or newer' in capsys.readouterr().err
 
@@ -154,20 +154,20 @@ def test_run_on_spark_needs_pyspark_and_java(
 def test_has_java(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import subprocess
 
-    from eigrel import cli
+    from eigrel import runner
 
     monkeypatch.setenv('JAVA_HOME', str(tmp_path / 'missing'))
-    assert cli._has_java() is False  # the binary does not exist
+    assert runner.has_java() is False  # the binary does not exist
 
     monkeypatch.delenv('JAVA_HOME')
-    monkeypatch.setattr(cli.shutil, 'which', lambda name: None)
-    assert cli._has_java() is False
+    monkeypatch.setattr(runner.shutil, 'which', lambda name: None)
+    assert runner.has_java() is False
 
-    monkeypatch.setattr(cli.shutil, 'which', lambda name: '/usr/bin/java')
+    monkeypatch.setattr(runner.shutil, 'which', lambda name: '/usr/bin/java')
     monkeypatch.setattr(
-        cli.subprocess, 'run', lambda *a, **k: subprocess.CompletedProcess(a, returncode=0)
+        runner.subprocess, 'run', lambda *a, **k: subprocess.CompletedProcess(a, returncode=0)
     )
-    assert cli._has_java() is True
+    assert runner.has_java() is True
 
 
 def test_compile_reports_unsupported_sql(
@@ -181,9 +181,9 @@ def test_compile_reports_unsupported_sql(
 def test_run_names_the_xgboost_and_mlflow_extras(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from eigrel import cli
+    from eigrel import runner
 
-    monkeypatch.setattr(cli, '_importable', lambda module: module not in ('xgboost', 'mlflow'))
+    monkeypatch.setattr(runner, 'importable', lambda module: module not in ('xgboost', 'mlflow'))
     path = write(
         tmp_path,
         'dataset d from csv("d.csv")\nmodel m = xgboost\ntrain m { target = y }\nregister m',

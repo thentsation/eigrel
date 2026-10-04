@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from eigrel.cli import _has_java
+from eigrel.runner import has_java
 
 EXAMPLES = Path(__file__).resolve().parent.parent / 'examples'
 
@@ -33,7 +33,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     reason = None
     if importlib.util.find_spec('pyspark') is None:
         reason = 'pyspark is not installed'
-    elif not _has_java():
+    elif not has_java():
         reason = 'no Java runtime'
     if reason:
         for item in spark_items:

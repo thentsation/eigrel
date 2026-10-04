@@ -123,11 +123,11 @@ failing exit code for CI.
 
 ## Status
 
-Eigrel 0.8 reads CSV, Parquet, JSON, SQL databases and BigQuery, cleans missing values, trains
+Eigrel 0.9 reads CSV, Parquet, JSON, SQL databases and BigQuery, cleans missing values, trains
 scikit-learn, XGBoost or Spark MLlib models, scores new data with the training pipeline and
 registers models in MLflow, compiling the same program to Python, Spark or SQL. `eigrel plan`
-shows the consequences before anything runs. Next: agents (an MCP server). See the
-[roadmap](docs/ROADMAP.md).
+shows the consequences before anything runs, and `eigrel mcp` gives agents the whole loop. Next:
+1.0, with the grammar and JSON contracts frozen. See the [roadmap](docs/ROADMAP.md).
 
 ## Getting started
 
@@ -160,6 +160,7 @@ churn: random_forest classification, trained on 315 rows, validated on 79
 | `eigrel ir FILE` | Prints the intermediate representation |
 | `eigrel ast FILE` | Prints the syntax tree as JSON |
 | `eigrel tokens FILE` | Prints the token stream |
+| `eigrel mcp` | Serves check, plan, compile and run to agents over MCP (stdio) |
 | `eigrel init NAME` | Creates a project with a starter program and sample data |
 
 The compiler catches mistakes before anything runs, and points at the exact spot:
@@ -262,14 +263,23 @@ use `make docker-build` and `make docker-run`.
 ### AI agents
 
 Eigrel is designed to be written by AI agents and verified by the compiler. Point your agent at
-[llms.txt](llms.txt) — the complete grammar in one file — and have it loop
-`eigrel check --json FILE.eig` until `"ok": true`; every error comes back with an exact line and
-column, so the fix is mechanical. What passes `check` is guaranteed to compile, and the same
-program runs on a laptop or a Spark cluster.
+[llms.txt](llms.txt): the complete grammar, the workflow and worked examples in one file. The
+loop is `eigrel check --json` until `"ok": true` (every error has an exact line and column), then
+`eigrel plan --json` against the real data, then `eigrel run`.
 
-```bash
-eigrel check --json churn.eig
+Agents that speak the Model Context Protocol get the same loop as tools. Install
+`pip install "eigrel[mcp]"` and register the server with your MCP client:
+
+```json
+{
+  "mcpServers": {
+    "eigrel": { "command": "eigrel", "args": ["mcp"] }
+  }
+}
 ```
+
+It exposes `check`, `plan`, `compile` and `run` (returning the same JSON as the CLI) and the
+`eigrel://llms.txt` and `eigrel://capabilities` resources.
 
 ## Language
 
