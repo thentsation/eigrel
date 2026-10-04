@@ -33,6 +33,9 @@ Agents that speak the Model Context Protocol can run `eigrel mcp` (with
 `pip install "eigrel[mcp]"`) and call the `check`, `plan`, `compile` and `run` tools instead of
 the CLI; they return the same JSON. This file is also served as the `eigrel://llms.txt` resource.
 
+Both JSON outputs carry `"format": 1`; their schemas are in
+https://github.com/thentsation/eigrel/tree/main/docs/schemas, and they are stable across 1.x.
+
 Example error object:
 
 ```json

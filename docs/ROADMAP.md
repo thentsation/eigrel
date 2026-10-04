@@ -26,12 +26,16 @@ does around it.
 | 0.7 | Plan | `eigrel plan`: schema inference, schema contracts, row counts, class balance, findings with codes, `--json`, `.eigstate` with drift detection |
 | 0.8 | Guarantees | `predict` that reuses the training pipeline (skew is a compile error), `assumptions { time }` with time-ordered splits and `random-split` warnings, a backend capability matrix, labels decoded inside registered models |
 | 0.9 | Agents | `eigrel mcp`: an MCP server with check, plan, compile and run tools and the grammar as a resource; worked examples in `llms.txt` |
+| 1.0 | Stable | Grammar, CLI, exit codes and JSON formats frozen under semantic versioning ([compatibility](COMPATIBILITY.md)); JSON Schemas in [`schemas/`](schemas/) checked by tests |
 
-## Next
+## After 1.0
 
-| Version | Theme | Scope |
-|---|---|---|
-| 1.0 | Stable | Grammar and JSON contracts frozen under semantic versioning; complete documentation |
+Ideas, in no particular order; none is promised:
+
+- An editor extension (syntax highlighting, `check` and `plan` diagnostics inline).
+- More backends behind the same programs, starting where the capability matrix says "no".
+- Cross-validation (`train { folds = 5 }`) and hyperparameter search, reported by `plan`.
+- Remote state for `.eigstate`, so CI and teammates share drift baselines.
 
 ## Out of scope
 

@@ -14,6 +14,10 @@ from eigrel.backends import python as python_backend
 from eigrel.backends import spark as spark_backend
 from eigrel.compiler import EigrelError, Graph, analyze, parse
 
+# Version of the JSON that `check --json`, `plan --json` and .eigstate files use. It changes only
+# when a field is removed or changes meaning; see docs/COMPATIBILITY.md and docs/schemas/.
+JSON_FORMAT = 1
+
 RUNNERS = {
     'python': (python_backend.generate, python_backend.runtime_requirements),
     'spark': (spark_backend.generate, spark_backend.runtime_requirements),
@@ -49,7 +53,12 @@ def check_file(path: str) -> dict[str, Any]:
 
 def check_files(paths: list[str]) -> dict[str, Any]:
     reports = [check_file(path) for path in paths]
-    return {'eigrel': __version__, 'ok': all(r['ok'] for r in reports), 'files': reports}
+    return {
+        'eigrel': __version__,
+        'format': JSON_FORMAT,
+        'ok': all(r['ok'] for r in reports),
+        'files': reports,
+    }
 
 
 def importable(module: str) -> bool:

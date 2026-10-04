@@ -14,7 +14,7 @@ authors = [{ name = 'Nathan Souza' }]
 dependencies = []
 keywords = ['programming-language', 'compiler', 'data-engineering', 'machine-learning', 'mlops', 'dsl']
 classifiers = [
-    'Development Status :: 2 - Pre-Alpha',
+    'Development Status :: 5 - Production/Stable',
     'Environment :: Console',
     'Intended Audience :: Developers',
     'Intended Audience :: Science/Research',
@@ -59,8 +59,6 @@ commit_message = 'chore(release): v{version} [skip ci]'
 commit_author = 'github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'
 version_toml = ['pyproject.toml:project.version']
 version_variables = ['src/eigrel/__init__.py:__version__']
-allow_zero_version = true
-major_on_zero = false
 
 [tool.semantic_release.branches.main]
 match = 'main'

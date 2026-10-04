@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/thentsation/eigrel/blob/main/docs/schemas/eigstate.schema.json",
+  "title": "PROGRAM.eigstate",
+  "description": "Format 1. Written by eigrel plan --save; files without a format are format 1.",
+  "type": "object",
+  "required": ["eigrel", "program", "datasets"],
+  "properties": {
+    "eigrel": {"type": "string"},
+    "format": {"const": 1},
+    "program": {"type": "string"},
+    "datasets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["source", "columns", "rows", "fingerprint"],
+        "properties": {
+          "source": {"type": "string"},
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "prefixItems": [{"type": "string"}, {"type": "string"}],
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "rows": {"type": ["integer", "null"]},
+          "fingerprint": {"type": "string", "pattern": "^[0-9a-f]{16}$"}
+        }
+      }
+    }
+  }
+}
