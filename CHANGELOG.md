@@ -2,6 +2,21 @@
 
 <!-- version list -->
 
+## v0.7.0 (2026-10-04)
+
+### Documentation
+
+- Show the leakage the compiler catches and the plan to 1.0
+  ([#12](https://github.com/thentsation/eigrel/pull/12),
+  [`31c73bf`](https://github.com/thentsation/eigrel/commit/31c73bf08b963fd65fc7469ad44a3ce41b43a12f))
+
+### Features
+
+- Eigrel plan with schema contracts, probes and drift
+  ([#13](https://github.com/thentsation/eigrel/pull/13),
+  [`b4e5f27`](https://github.com/thentsation/eigrel/commit/b4e5f277c1eafaff407c28b661ca35752935fe9d))
+
+
 ## v0.6.1 (2026-10-04)
 
 ### Bug Fixes
