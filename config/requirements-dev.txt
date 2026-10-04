@@ -5,3 +5,5 @@ pytest==9.1.1
 pytest-cov==7.1.0
 # Runs the SQL the compiler generates for file sources in the tests.
 duckdb==1.5.6
+# Runs `register` in the tests and examples; not part of the Docker image.
+mlflow==3.16.1

@@ -207,3 +207,44 @@ def test_to_dict_is_json_ready() -> None:
         ],
         'loc': {'line': 1, 'column': 1},
     }
+
+
+def test_fill_drop_missing_and_register() -> None:
+    program = parse(
+        'transform d {\n fill a = 0, b = "x"\n drop_missing a, b\n drop_missing\n}\n'
+        'register m\nregister n { name = "n-model" }'
+    )
+    transform, plain, named = program.statements
+    assert transform == ast.TransformDecl(
+        'd',
+        (
+            ast.FillOp(
+                (
+                    ast.Param('a', ast.IntLiteral(0, loc=L), loc=L),
+                    ast.Param('b', ast.StringLiteral('x', loc=L), loc=L),
+                ),
+                loc=L,
+            ),
+            ast.DropMissingOp((ast.Name('a', loc=L), ast.Name('b', loc=L)), loc=L),
+            ast.DropMissingOp((), loc=L),
+        ),
+        loc=L,
+    )
+    assert plain == ast.RegisterStmt('m', (), loc=L)
+    assert named == ast.RegisterStmt(
+        'n', (ast.Param('name', ast.StringLiteral('n-model', loc=L), loc=L),), loc=L
+    )
+
+
+@pytest.mark.parametrize(
+    ('source', 'message'),
+    [
+        ('transform d { fill a 0 }', "expected '=' after 'a', found integer 0"),
+        ('transform d { fill = 0 }', "expected a column name, found '='"),
+        ('transform d { drop_missing 1 }', "expected 'filter', 'select', 'fill', 'drop_missing'"),
+        ('register { }', "expected a model name, found '{'"),
+    ],
+)
+def test_new_statement_errors(source: str, message: str) -> None:
+    with pytest.raises(ParseError, match=re.escape(message)):
+        parse(source)

@@ -8,6 +8,7 @@ Models are not part of the SQL output.
 from dataclasses import dataclass
 
 from eigrel import __version__
+from eigrel.backends import UnsupportedError
 from eigrel.compiler import ast, ir
 
 FILE_READERS = {'csv': 'read_csv_auto', 'parquet': 'read_parquet', 'json': 'read_json_auto'}
@@ -20,11 +21,13 @@ class Dialect:
     quote: str
     # BigQuery has no % operator, only MOD().
     mod_function: bool = False
+    # Supports SELECT * REPLACE (expr AS column).
+    star_replace: bool = False
 
 
 ANSI = Dialect('ansi', '"')
-DUCKDB = Dialect('duckdb', '"')
-BIGQUERY = Dialect('bigquery', '`', mod_function=True)
+DUCKDB = Dialect('duckdb', '"', star_replace=True)
+BIGQUERY = Dialect('bigquery', '`', mod_function=True, star_replace=True)
 MYSQL = Dialect('mysql', '`')
 # Database URL scheme (before any +driver) -> dialect; anything else uses ANSI quoting.
 URL_DIALECTS = {
@@ -36,12 +39,15 @@ URL_DIALECTS = {
 }
 
 
+DatasetOp = ir.Filter | ir.Select | ir.Fill | ir.DropMissing
+
+
 @dataclass(frozen=True)
 class Query:
     dataset: str
     source: ir.Load
-    columns: tuple[str, ...] | None
-    filters: tuple[ast.Expr, ...]
+    # The operations applied to the source, in order.
+    ops: tuple[DatasetOp, ...]
 
 
 def dialect_for(load: ir.Load) -> Dialect:
@@ -57,48 +63,84 @@ def dialect_for(load: ir.Load) -> Dialect:
 
 
 def dataset_queries(graph: ir.Graph) -> list[Query]:
-    """The final state of every dataset as a source plus its filters and projection."""
+    """The final state of every dataset: its source and the operations applied to it."""
     latest: dict[str, int] = {}
     for op in graph.ops:
-        if isinstance(op, ir.Load | ir.Filter | ir.Select):
+        if isinstance(op, ir.Load | ir.Filter | ir.Select | ir.Fill | ir.DropMissing):
             latest[op.name] = op.id
     return [_query(graph, name, op_id) for name, op_id in latest.items()]
 
 
 def _query(graph: ir.Graph, name: str, op_id: int) -> Query:
-    filters: list[ast.Expr] = []
-    columns: tuple[str, ...] | None = None
+    ops: list[DatasetOp] = []
     op = graph.ops[op_id]
     while not isinstance(op, ir.Load):
-        match op:
-            case ir.Filter():
-                filters.append(op.condition)
-                op = graph.ops[op.input]
-            case ir.Select():
-                # Walking backwards, the first select seen is the last one applied.
-                columns = op.columns if columns is None else columns
-                op = graph.ops[op.input]
-            case _:  # pragma: no cover
-                raise AssertionError(f'unexpected op {op!r} in a dataset chain')
-    # Semantic analysis guarantees every filter only uses columns that exist where it runs, so
-    # filters and the projection can be merged into a single SELECT.
-    return Query(name, op, columns, tuple(reversed(filters)))
+        assert isinstance(op, ir.Filter | ir.Select | ir.Fill | ir.DropMissing)
+        ops.append(op)
+        op = graph.ops[op.input]
+    return Query(name, op, tuple(reversed(ops)))
 
 
 def render(query: Query) -> str:
+    """One SELECT for the whole chain.
+
+    Semantic analysis guarantees every column used exists where it is used, so filters and the
+    final projection merge into a single statement. Filled columns are tracked as COALESCE
+    expressions, so later filters and the projection see the filled values.
+    """
     dialect = dialect_for(query.source)
-    columns = '*'
-    if query.columns is not None:
-        columns = ', '.join(_identifier(column, dialect) for column in query.columns)
-    sql = f'SELECT {columns} FROM {_from(query.source, dialect)}'
-    if query.filters:
-        sql += ' WHERE ' + ' AND '.join(_expr(f, dialect) for f in query.filters)
+    filled: dict[str, str] = {}
+    conditions: list[str] = []
+    columns: tuple[str, ...] | None = None
+    for op in query.ops:
+        match op:
+            case ir.Filter():
+                conditions.append(_expr(op.condition, dialect, filled))
+            case ir.Select():
+                columns = op.columns
+            case ir.Fill():
+                for column, value in op.values:
+                    current = filled.get(column, _identifier(column, dialect))
+                    filled[column] = f'COALESCE({current}, {_value(value)})'
+            case ir.DropMissing():
+                dropped = op.columns if op.columns is not None else columns
+                if dropped is None:
+                    raise UnsupportedError(
+                        f"SQL needs the column names for drop_missing in '{query.dataset}';"
+                        ' list them (drop_missing a, b) or select the columns first'
+                    )
+                for column in dropped:
+                    reference = filled.get(column, _identifier(column, dialect))
+                    conditions.append(f'({reference} IS NOT NULL)')
+    sql = f'SELECT {_projection(query.dataset, columns, filled, dialect)}'
+    sql += f' FROM {_from(query.source, dialect)}'
+    if conditions:
+        sql += ' WHERE ' + ' AND '.join(conditions)
     return sql
+
+
+def _projection(
+    dataset: str, columns: tuple[str, ...] | None, filled: dict[str, str], dialect: Dialect
+) -> str:
+    if columns is not None:
+        return ', '.join(
+            f'{filled[c]} AS {_identifier(c, dialect)}' if c in filled else _identifier(c, dialect)
+            for c in columns
+        )
+    if not filled:
+        return '*'
+    if not dialect.star_replace:
+        raise UnsupportedError(
+            f"{dialect.name} SQL cannot fill columns of '{dataset}' without knowing all of them;"
+            ' select the columns first'
+        )
+    replaced = ', '.join(f'{expr} AS {_identifier(c, dialect)}' for c, expr in filled.items())
+    return f'* REPLACE ({replaced})'
 
 
 def select_all(load: ir.Load) -> str:
     """SELECT * from a single source, as used by the Python backend to read databases."""
-    return render(Query(load.name, load, None, ()))
+    return render(Query(load.name, load, ()))
 
 
 def generate(graph: ir.Graph, source_name: str = '<eigrel>') -> str:
@@ -133,10 +175,18 @@ def _string(text: str) -> str:
     return "'" + text.replace("'", "''") + "'"
 
 
-def _expr(expr: ast.Expr, dialect: Dialect) -> str:
+def _value(value: ir.Value) -> str:
+    if isinstance(value, bool):
+        return 'TRUE' if value else 'FALSE'
+    if isinstance(value, str):
+        return _string(value)
+    return repr(value)
+
+
+def _expr(expr: ast.Expr, dialect: Dialect, filled: dict[str, str]) -> str:
     match expr:
         case ast.Name(value=column):
-            return _identifier(column, dialect)
+            return filled.get(column, _identifier(column, dialect))
         case ast.IntLiteral(value=number) | ast.FloatLiteral(value=number):
             return repr(number)
         case ast.StringLiteral(value=text):
@@ -144,12 +194,12 @@ def _expr(expr: ast.Expr, dialect: Dialect) -> str:
         case ast.BoolLiteral(value=flag):
             return 'TRUE' if flag else 'FALSE'
         case ast.Unary(op='not', operand=operand):
-            return f'(NOT {_expr(operand, dialect)})'
+            return f'(NOT {_expr(operand, dialect, filled)})'
         case ast.Unary(op=op, operand=operand):
-            return f'({op}{_expr(operand, dialect)})'
+            return f'({op}{_expr(operand, dialect, filled)})'
         case ast.Binary(op='%', left=left, right=right) if dialect.mod_function:
-            return f'MOD({_expr(left, dialect)}, {_expr(right, dialect)})'
+            return f'MOD({_expr(left, dialect, filled)}, {_expr(right, dialect, filled)})'
         case ast.Binary(op=op, left=left, right=right):
             sql_op = OPERATORS.get(op, op)
-            return f'({_expr(left, dialect)} {sql_op} {_expr(right, dialect)})'
+            return f'({_expr(left, dialect, filled)} {sql_op} {_expr(right, dialect, filled)})'
     raise AssertionError(f'semantic analysis rejects {expr!r} in filters')  # pragma: no cover

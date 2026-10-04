@@ -5,7 +5,7 @@ PYTHON := $(VENV)/bin/python
 
 install:
 	uv venv --python 3.14 $(VENV)
-	uv pip install --python $(PYTHON) -r config/requirements-dev.txt -e '.[python,sql,spark]'
+	uv pip install --python $(PYTHON) -r config/requirements-dev.txt -e '.[python,sql,spark,xgboost,mlflow]'
 
 test:
 	$(PYTHON) -m pytest
@@ -31,6 +31,7 @@ run-examples:
 	$(VENV)/bin/eigrel run examples/ml.eig
 	$(VENV)/bin/eigrel run examples/regression.eig
 	$(VENV)/bin/eigrel run examples/sql.eig
+	$(VENV)/bin/eigrel run examples/mlflow.eig
 
 lock:
 	uv pip compile config/requirements.txt --output-file=config/requirements.lock --universal

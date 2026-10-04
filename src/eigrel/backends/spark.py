@@ -39,6 +39,7 @@ ESTIMATORS: dict[str, tuple[str, str | None, str | None, bool]] = {
     ),
     'decision_tree': ('pyspark.ml.{task}', 'DecisionTreeClassifier', 'DecisionTreeRegressor', True),
     'gradient_boosting': ('pyspark.ml.{task}', 'GBTClassifier', 'GBTRegressor', True),
+    'xgboost': ('xgboost.spark', 'SparkXGBClassifier', 'SparkXGBRegressor', True),
     'logistic_regression': ('pyspark.ml.classification', 'LogisticRegression', None, False),
     'linear_regression': ('pyspark.ml.regression', None, 'LinearRegression', False),
 }
@@ -52,6 +53,12 @@ PARAM_NAMES = {
 }
 # Gradient boosting counts its trees as iterations.
 GBT_PARAM_NAMES = {**PARAM_NAMES, 'trees': 'maxIter'}
+# XGBoost on Spark takes the same parameter names as XGBoost itself.
+XGBOOST_PARAM_NAMES = {
+    'trees': 'n_estimators',
+    'max_depth': 'max_depth',
+    'learning_rate': 'learning_rate',
+}
 
 # Metric -> (MLlib metric for 0/1 targets, MLlib metric otherwise). Binary targets report the
 # metric for the positive class, like the Python backend's average='binary'.
@@ -73,17 +80,22 @@ MODEL_HELPERS = (
     '_index',
     '_onehot',
     '_stages',
+    '_labels',
     '_data',
     '_train',
     '_test',
     '_pred',
     '_binary',
     '_metrics',
+    '_evaluator',
     '_auc',
+    '_registered',
 )
 DATASET_HELPERS = ('_jdbc', '_package')
 RESERVED = {
     'os',
+    'logging',
+    'mlflow',
     'sys',
     'warnings',
     'F',
@@ -140,6 +152,8 @@ class _Generator:
     jdbc: list[ir.Load] = field(default_factory=list)
     # Train op id -> task, for evaluate.
     trained: dict[int, ir.Task] = field(default_factory=dict)
+    # Extra `import x` lines beyond os, sys and warnings.
+    modules: set[str] = field(default_factory=set)
 
     def generate(self) -> str:
         self.names = assign_names(self.graph, RESERVED, DATASET_HELPERS, MODEL_HELPERS)
@@ -153,10 +167,16 @@ class _Generator:
                     self._filter(op)
                 case ir.Select():
                     self._select(op)
+                case ir.Fill():
+                    self._fill(op)
+                case ir.DropMissing():
+                    self._drop_missing(op)
                 case ir.Train():
                     self._train(op)
                 case ir.Evaluate():
                     self._evaluate(op)
+                case ir.Register():
+                    self._register(op)
         return (
             '\n'.join([*self._header(), *self._session(), *self.lines, '', 'spark.stop()']) + '\n'
         )
@@ -168,9 +188,7 @@ class _Generator:
                 ' Do not edit."""'
             ),
             '',
-            'import os',
-            'import sys',
-            'import warnings',
+            *(f'import {m}' for m in sorted({'os', 'sys', 'warnings', *self.modules})),
         ]
         if self.jdbc:
             self._import('urllib.parse', 'unquote')
@@ -238,6 +256,17 @@ class _Generator:
         name = self._bind(op)
         self.lines.append(f'{name} = {source}.select({", ".join(map(repr, op.columns))})')
 
+    def _fill(self, op: ir.Fill) -> None:
+        source = self.variables[op.input]
+        name = self._bind(op)
+        self.lines.append(f'{name} = {source}.fillna({dict(op.values)!r})')
+
+    def _drop_missing(self, op: ir.DropMissing) -> None:
+        source = self.variables[op.input]
+        name = self._bind(op)
+        subset = '' if op.columns is None else f'subset={list(op.columns)!r}'
+        self.lines.append(f'{name} = {source}.dropna({subset})')
+
     def _train(self, op: ir.Train) -> None:
         data = self.variables[op.input]
         model = self._bind(op)
@@ -251,8 +280,14 @@ class _Generator:
         self._import('pyspark.ml.feature', 'StringIndexer')
         self._import('pyspark.ml.feature', 'VectorAssembler')
 
-        names = GBT_PARAM_NAMES if op.algorithm == 'gradient_boosting' else PARAM_NAMES
-        kwargs = [f'featuresCol={FEATURES!r}', f'labelCol={LABEL!r}']
+        xgboost = op.algorithm == 'xgboost'
+        names = {'gradient_boosting': GBT_PARAM_NAMES, 'xgboost': XGBOOST_PARAM_NAMES}.get(
+            op.algorithm, PARAM_NAMES
+        )
+        if xgboost:
+            kwargs = [f'features_col={FEATURES!r}', f'label_col={LABEL!r}']
+        else:
+            kwargs = [f'featuresCol={FEATURES!r}', f'labelCol={LABEL!r}']
         for key, value in op.params:
             if key == 'c':
                 # scikit-learn's C is the inverse of the regularization strength.
@@ -261,7 +296,12 @@ class _Generator:
             else:
                 kwargs.append(f'{names[key]}={value!r}')
         if seeded:
-            kwargs.append(f'seed={op.seed}')
+            kwargs.append(f'random_state={op.seed}' if xgboost else f'seed={op.seed}')
+        if xgboost:
+            # XGBoost on Spark logs every boosting round unless told otherwise.
+            kwargs += ['verbose=False', 'verbosity=0']
+            self.modules.add('logging')
+            self.lines.append("logging.getLogger('XGBoost-PySpark').setLevel(logging.WARNING)")
         if op.features is None:
             features = f'[c for c in {data}.columns if c != {op.target!r}]'
         else:
@@ -285,9 +325,11 @@ class _Generator:
         ]
         if op.task == 'classification':
             self.lines += [
+                # Text targets are indexed outside the model's pipeline, so the trained model
+                # does not need the target column to predict.
                 f"if dict({data}.dtypes)[{op.target!r}] == 'string':",
-                f'    {model}_stages.append(StringIndexer(inputCol={op.target!r}, outputCol={LABEL!r}))',
-                f'    {model}_data = {data}',
+                f'    {model}_labels = StringIndexer(inputCol={op.target!r}, outputCol={LABEL!r})',
+                f'    {model}_data = {model}_labels.fit({data}).transform({data})',
                 'else:',
                 f"    {model}_data = {data}.withColumn({LABEL!r}, F.col({op.target!r}).cast('double'))",
                 '# Like the Python backend, 0/1 targets report metrics for the positive class.',
@@ -318,20 +360,28 @@ class _Generator:
     def _evaluate(self, op: ir.Evaluate) -> None:
         model = self.variables[op.model]
         self._section(f'Evaluate {op.name}')
-        self.lines.append(f'{model}_pred = {model}.transform({model}_test)')
+        self.lines += [f'{model}_pred = {model}.transform({model}_test)', f'{model}_metrics = {{}}']
         width = max(len(metric) for metric in op.metrics)
+
+        def record(metric: str) -> list[str]:
+            return [
+                f'{model}_metrics[{metric!r}] = {model}_evaluator.evaluate({model}_pred)',
+                f'print(f"  {metric:<{width}}  {{{model}_metrics[{metric!r}]:.4f}}")',
+            ]
+
         if self.trained[op.model] == 'regression':
             self._import('pyspark.ml.evaluation', 'RegressionEvaluator')
-            self.lines.append(f'{model}_metrics = RegressionEvaluator(labelCol={LABEL!r})')
+            self.lines.append(f'{model}_evaluator = RegressionEvaluator(labelCol={LABEL!r})')
             for metric in op.metrics:
                 self.lines += [
-                    f'{model}_metrics.setMetricName({REGRESSION_METRICS[metric]!r})',
-                    f"print(f'  {metric:<{width}}  {{{model}_metrics.evaluate({model}_pred):.4f}}')",
+                    f'{model}_evaluator.setMetricName({REGRESSION_METRICS[metric]!r})',
+                    *record(metric),
                 ]
             return
         self._import('pyspark.ml.evaluation', 'MulticlassClassificationEvaluator')
         self.lines.append(
-            f'{model}_metrics = MulticlassClassificationEvaluator(labelCol={LABEL!r}, metricLabel=1.0)'
+            f'{model}_evaluator = MulticlassClassificationEvaluator('
+            f'labelCol={LABEL!r}, metricLabel=1.0)'
         )
         for metric in op.metrics:
             if metric == 'auc':
@@ -339,7 +389,8 @@ class _Generator:
                 self.lines += [
                     f'if {model}_binary:',
                     f'    {model}_auc = BinaryClassificationEvaluator(labelCol={LABEL!r})',
-                    f"    print(f'  {metric:<{width}}  {{{model}_auc.evaluate({model}_pred):.4f}}')",
+                    f"    {model}_metrics['auc'] = {model}_auc.evaluate({model}_pred)",
+                    f'    print(f"  {metric:<{width}}  {{{model}_metrics[\'auc\']:.4f}}")',
                     'else:',
                     f"    print('  {metric:<{width}}  n/a (Spark computes AUC for 0/1 targets only)')",
                 ]
@@ -348,10 +399,46 @@ class _Generator:
             name = (
                 repr(binary) if binary == other else f'{binary!r} if {model}_binary else {other!r}'
             )
-            self.lines += [
-                f'{model}_metrics.setMetricName({name})',
-                f"print(f'  {metric:<{width}}  {{{model}_metrics.evaluate({model}_pred):.4f}}')",
-            ]
+            self.lines += [f'{model}_evaluator.setMetricName({name})', *record(metric)]
+
+    def _register(self, op: ir.Register) -> None:
+        model = self.variables[op.model]
+        train = self.graph.ops[op.model]
+        assert isinstance(train, ir.Train)
+        self.modules.add('logging')
+        params = {
+            'algorithm': train.algorithm,
+            'task': train.task,
+            'target': train.target,
+            'validation': train.validation,
+            'seed': train.seed,
+            **dict(train.params),
+        }
+        message = f'{op.name}: registered in MLflow as {op.registered_name!r}, version'
+        self._section(f'Register {op.name} in MLflow')
+        self.lines += [
+            '# Imported here so the hint MLflow prints on import can be turned off first.',
+            "os.environ.setdefault('MLFLOW_DISABLE_AGENT_HINT', '1')",
+            'import mlflow',
+            'import mlflow.spark',
+            '',
+            "logging.getLogger('mlflow').setLevel(logging.ERROR)",
+            "warnings.filterwarnings('ignore', module='mlflow')",
+        ]
+        if op.experiment is not None:
+            self.lines.append(f'mlflow.set_experiment({op.experiment!r})')
+        self.lines += [
+            f'with mlflow.start_run(run_name={op.name!r}):',
+            f'    mlflow.log_params({params!r})',
+        ]
+        if op.evaluation is not None:
+            self.lines.append(f'    mlflow.log_metrics({model}_metrics)')
+        self.lines += [
+            f'    {model}_registered = mlflow.spark.log_model(',
+            f"        {model}, 'model', registered_model_name={op.registered_name!r}",
+            '    )',
+            f'print({message!r}, {model}_registered.registered_model_version)',
+        ]
 
     def _expr(self, expr: ast.Expr) -> str:
         match expr:
@@ -382,8 +469,13 @@ class _Generator:
 
 
 def runtime_requirements(graph: ir.Graph) -> list[Requirement]:
-    """PySpark is the only Python module a Spark program needs; Spark itself also needs Java."""
-    return [Requirement('pyspark', 'spark')]
+    """Python modules a Spark program needs; Spark itself also needs Java."""
+    requirements = [Requirement('pyspark', 'spark')]
+    if any(isinstance(op, ir.Train) and op.algorithm == 'xgboost' for op in graph.ops):
+        requirements.append(Requirement('xgboost', 'xgboost'))
+    if any(isinstance(op, ir.Register) for op in graph.ops):
+        requirements.append(Requirement('mlflow', 'mlflow'))
+    return requirements
 
 
 def _source_value(value: ir.SourceArg) -> str:

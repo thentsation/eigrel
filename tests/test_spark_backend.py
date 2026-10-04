@@ -120,13 +120,13 @@ def test_training_and_evaluation_code() -> None:
     assert "r_features = ['a', 'b']" in code
     assert "n_features = [c for c in e.columns if c != 'y']" in code
     assert 'm_train, m_test = m_data.randomSplit([0.75, 0.25], seed=7)' in code
-    assert "m_metrics.setMetricName('accuracy')" in code
+    assert "m_evaluator.setMetricName('accuracy')" in code
     assert (
-        "m_metrics.setMetricName('precisionByLabel' if m_binary else 'weightedPrecision')" in code
+        "m_evaluator.setMetricName('precisionByLabel' if m_binary else 'weightedPrecision')" in code
     )
     assert 'if m_binary:' in code and 'n/a (Spark computes AUC for 0/1 targets only)' in code
     assert "r_data = d.withColumn('__eigrel_label', F.col('z').cast('double'))" in code
-    assert "r_metrics.setMetricName('mae')" in code
+    assert "r_evaluator.setMetricName('mae')" in code
     compile(code, 'generated.py', 'exec')  # valid Python
 
 
@@ -229,3 +229,80 @@ def test_sqlite_through_jdbc_and_text_columns(tmp_path: Path, examples_dir: Path
     assert re.search(r'  auc       0\.\d{4}', out)
     assert 'kind: decision_tree classification' in out
     assert '  auc       n/a (Spark computes AUC for 0/1 targets only)' in out
+
+
+def test_cleaning_xgboost_and_register_code() -> None:
+    code = spark_code(
+        'dataset d from csv("d.csv")\n'
+        'transform d { fill city = "x", n = 0\n drop_missing a\n drop_missing }\n'
+        'model m = xgboost { trees = 30, max_depth = 3, learning_rate = 0.1 }\n'
+        'train m { target = y }\nevaluate m { metrics = [f1] }\n'
+        'register m { name = "churn", experiment = "e" }\n'
+        'model r = linear_regression\ntrain r { target = n }\nregister r\n'
+    )
+    assert "d = d.fillna({'city': 'x', 'n': 0})" in code
+    assert "d = d.dropna(subset=['a'])" in code
+    assert 'd = d.dropna()' in code
+    assert (
+        "SparkXGBClassifier(features_col='__eigrel_features', label_col='__eigrel_label',"
+        ' n_estimators=30, max_depth=3, learning_rate=0.1, random_state=42, verbose=False,'
+        ' verbosity=0)'
+    ) in code
+    assert "logging.getLogger('XGBoost-PySpark').setLevel(logging.WARNING)" in code
+    assert "m_labels = StringIndexer(inputCol='y', outputCol='__eigrel_label')" in code
+    assert "mlflow.set_experiment('e')" in code
+    assert "mlflow.spark.log_model(\n        m, 'model', registered_model_name='churn'" in code
+    assert code.count('mlflow.log_metrics(') == 1  # r has no evaluation
+    assert 'print("r: registered in MLflow as \'r\', version"' in code
+    compile(code, 'generated.py', 'exec')
+
+
+def test_spark_requirements_for_xgboost_and_mlflow() -> None:
+    graph = compile_source(
+        'dataset d from csv("d.csv")\nmodel m = xgboost\ntrain m { target = y }\nregister m'
+    )
+    assert [r.module for r in runtime_requirements(graph)] == ['pyspark', 'xgboost', 'mlflow']
+
+
+@pytest.mark.spark
+def test_cleaning_xgboost_and_register_run_on_spark(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import mlflow
+    import pandas as pd
+
+    rows = ['x,city,plan']
+    for i in range(120):
+        x = '' if i % 17 == 0 else str(i % 30)
+        city = '' if i % 11 == 0 else ['rio', 'sp'][i % 2]
+        rows.append(f'{x},{city},{["basic", "pro"][(i % 30) // 15]}')
+    (tmp_path / 'plans.csv').write_text('\n'.join(rows) + '\n')
+    tracking = f'sqlite:///{tmp_path / "mlflow.db"}'
+    monkeypatch.setenv('MLFLOW_TRACKING_URI', tracking)
+    program = tmp_path / 'plans.eig'
+    program.write_text(
+        'dataset d from csv("plans.csv")\n'
+        'transform d { fill city = "unknown"\n drop_missing x }\n'
+        'model m = xgboost { trees = 10, max_depth = 2 }\n'
+        'train m { target = plan }\n'
+        'evaluate m { metrics = [accuracy] }\n'
+        'register m { name = "spark-plans" }\n'
+    )
+    script = tmp_path / 'plans_spark.py'
+    script.write_text(generate(compile_source(program.read_text()), program.name))
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**os.environ, 'PYSPARK_PYTHON': sys.executable},
+        timeout=900,
+    )
+    assert 'm: xgboost classification' in result.stdout
+    assert "m: registered in MLflow as 'spark-plans', version 1" in result.stdout
+
+    mlflow.set_tracking_uri(tracking)
+    version = mlflow.MlflowClient().get_model_version('spark-plans', '1')
+    assert mlflow.get_run(version.run_id).data.params['algorithm'] == 'xgboost'
+    assert pd.notna(version.run_id)

@@ -41,50 +41,6 @@ def test_check_missing_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     assert 'cannot read' in capsys.readouterr().err
 
 
-def test_check_json_ok(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    path = write(tmp_path, VALID)
-    assert main(['check', '--json', path]) == 0
-    data = json.loads(capsys.readouterr().out)
-    assert data == {
-        'eigrel': __version__,
-        'ok': True,
-        'files': [{'path': path, 'ok': True, 'operations': 1, 'errors': []}],
-    }
-
-
-def test_check_json_reports_positioned_errors(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    good = write(tmp_path, VALID, 'good.eig')
-    bad = write(tmp_path, 'model m = rf', 'bad.eig')
-    broken = write(tmp_path, 'model m random_forest', 'broken.eig')
-    assert main(['check', '--json', bad, broken, good]) == 1
-    data = json.loads(capsys.readouterr().out)
-    assert data['eigrel'] == __version__
-    assert data['ok'] is False
-    semantic, parse, ok = data['files']
-    assert semantic['ok'] is False
-    assert semantic['errors'][0]['stage'] == 'semantic'
-    assert semantic['errors'][0]['message'].startswith("unknown algorithm 'rf'")
-    assert semantic['errors'][0]['line'] == 1
-    assert semantic['errors'][0]['column'] == 1
-    assert parse['ok'] is False
-    assert parse['errors'][0]['stage'] == 'parse'
-    assert parse['errors'][0]['line'] == 1
-    assert parse['errors'][0]['column'] == 9
-    assert ok == {'path': good, 'ok': True, 'operations': 1, 'errors': []}
-
-
-def test_check_json_missing_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    missing = str(tmp_path / 'nope.eig')
-    assert main(['check', '--json', missing]) == 1
-    data = json.loads(capsys.readouterr().out)
-    report = data['files'][0]
-    assert report['ok'] is False
-    assert report['errors'][0]['stage'] == 'io'
-    assert report['errors'][0]['message'].startswith(f'cannot read {missing}')
-
-
 def test_ast(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(['ast', write(tmp_path, VALID)]) == 0
     data = json.loads(capsys.readouterr().out)
@@ -212,6 +168,28 @@ def test_has_java(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         cli.subprocess, 'run', lambda *a, **k: subprocess.CompletedProcess(a, returncode=0)
     )
     assert cli._has_java() is True
+
+
+def test_compile_reports_unsupported_sql(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, 'dataset d from sql("sqlite://", "t")\ntransform d { drop_missing }')
+    assert main(['compile', '-t', 'sql', path]) == 1
+    assert 'error: SQL needs the column names for drop_missing' in capsys.readouterr().err
+
+
+def test_run_names_the_xgboost_and_mlflow_extras(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from eigrel import cli
+
+    monkeypatch.setattr(cli, '_importable', lambda module: module not in ('xgboost', 'mlflow'))
+    path = write(
+        tmp_path,
+        'dataset d from csv("d.csv")\nmodel m = xgboost\ntrain m { target = y }\nregister m',
+    )
+    assert main(['run', path]) == 1
+    assert 'pip install "eigrel[mlflow,xgboost]"' in capsys.readouterr().err
 
 
 def test_run_without_runtime_dependencies(

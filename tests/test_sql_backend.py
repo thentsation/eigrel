@@ -132,3 +132,45 @@ def test_generated_sql_runs_on_sqlite(frame: pd.DataFrame, tmp_path: Path) -> No
         sql = query('dataset d from sql("sqlite:///shop.db", "people")\n' + PIPELINE.format())
         rows = connection.execute(sql).fetchall()
     assert sorted(rows) == [(20, 'b'), (30, "c'd"), (40, 'b')]
+
+
+def test_fill_and_drop_missing_become_coalesce_and_is_not_null() -> None:
+    sql = query(
+        'dataset d from sql("sqlite://", "t")\n'
+        'transform d { fill a = 0, b = "x"\n filter a > 1\n select a, b, c\n drop_missing }'
+    )
+    assert sql == (
+        'SELECT COALESCE("a", 0) AS "a", COALESCE("b", \'x\') AS "b", "c" FROM "t"'
+        ' WHERE (COALESCE("a", 0) > 1) AND (COALESCE("a", 0) IS NOT NULL)'
+        ' AND (COALESCE("b", \'x\') IS NOT NULL) AND ("c" IS NOT NULL)'
+    )
+    assert query(
+        'dataset d from bigquery("my-project.s.t")\ntransform d { fill a = 1\n fill a = 2 }'
+    ) == ('SELECT * REPLACE (COALESCE(COALESCE(`a`, 1), 2) AS `a`) FROM `my-project.s.t`')
+    assert query(
+        'dataset d from sql("sqlite://", "t")\ntransform d { fill c = false\n select c }'
+    ) == ('SELECT COALESCE("c", FALSE) AS "c" FROM "t"')
+
+
+@pytest.mark.parametrize(
+    ('transform', 'message'),
+    [
+        ('drop_missing', "SQL needs the column names for drop_missing in 'd'"),
+        ('fill a = 0', "sqlite SQL cannot fill columns of 'd' without knowing all of them"),
+    ],
+)
+def test_unsupported_cleaning(transform: str, message: str) -> None:
+    from eigrel.backends import UnsupportedError
+
+    with pytest.raises(UnsupportedError, match=message):
+        query(f'dataset d from sql("sqlite://", "t")\ntransform d {{ {transform} }}')
+
+
+def test_cleaning_sql_runs_on_duckdb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / 'data.csv').write_text('age,city\n15,a\n,b\n30,\n40,c\n')
+    monkeypatch.chdir(tmp_path)
+    sql = query(
+        'dataset d from csv("data.csv")\n'
+        'transform d { fill city = "unknown"\n drop_missing age\n filter city != "a" }'
+    )
+    assert sorted(duckdb.sql(sql).fetchall()) == [(30, 'unknown'), (40, 'c')]
