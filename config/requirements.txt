@@ -5,3 +5,4 @@ scikit-learn>=1.9,<1.10
 pyarrow>=25,<26
 sqlalchemy>=2.1,<2.2
 xgboost>=3.4,<4
+duckdb>=1.5,<1.6

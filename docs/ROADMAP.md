@@ -10,8 +10,8 @@ does around it.
 | HCL | `.eig` programs |
 | Providers | Backends: Python (pandas + scikit-learn), Spark (PySpark + MLlib), SQL ✅ |
 | Validation | `eigrel check` (`--json` for tools and agents) ✅ |
-| `terraform plan` | `eigrel plan`: row counts, schemas, class balance and warnings before running |
-| State and drift | `.eigstate`: schema fingerprints, drift detection |
+| `terraform plan` | `eigrel plan`: row counts, schemas, class balance and warnings before running ✅ |
+| State and drift | `.eigstate`: schema fingerprints, drift detection ✅ |
 | Review in pull requests | A pipeline change is a reviewable diff with proven consequences |
 
 ## Released
@@ -23,12 +23,12 @@ does around it.
 | 0.3 | Data | CSV, Parquet, JSON, SQL databases, BigQuery, `env()`, SQL backend |
 | 0.4 | Spark | Spark backend: PySpark for data, MLlib for training |
 | 0.5 – 0.6 | ML | `fill`, `drop_missing`, XGBoost, MLflow `register`, leak-free encoding pipeline, Spark parity, `check --json`, [`llms.txt`](../llms.txt) |
+| 0.7 | Plan | `eigrel plan`: schema inference, schema contracts, row counts, class balance, findings with codes, `--json`, `.eigstate` with drift detection |
 
 ## Next
 
 | Version | Theme | Scope |
 |---|---|---|
-| 0.7 | Plan | Schema inference for every source; `eigrel plan`, human-readable and `--json`: rows in and out of every operation, the schema at each step, target class counts, warnings (imbalance, too few minority rows in validation, missing values the algorithm cannot handle); schema contracts checked with exact locations; `.eigstate` with schema fingerprints and drift detection |
 | 0.8 | Guarantees | `predict` that must reuse the training pipeline (train/serve skew becomes a compile error); `assumptions { time = ... }` and temporal leakage checks; a capability matrix per backend with clear errors; labels decoded inside the registered model |
 | 0.9 | Agents | MCP server exposing check, plan, compile and run as tools; few-shot examples in `llms.txt` |
 | 1.0 | Stable | Grammar and JSON contracts frozen under semantic versioning; complete documentation |

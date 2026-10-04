@@ -2,6 +2,8 @@
 #    uv pip compile config/requirements.txt --output-file=config/requirements.lock --universal
 cloudpickle==3.1.2
     # via joblib
+duckdb==1.5.6
+    # via -r config/requirements.txt
 joblib==1.6.0
     # via scikit-learn
 narwhals==2.26.0

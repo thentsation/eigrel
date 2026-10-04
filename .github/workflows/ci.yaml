@@ -83,6 +83,12 @@ jobs:
       - name: Check examples
         run: eigrel check examples/*.eig
 
+      - name: Plan examples against their data
+        run: |
+          for program in examples/ml.eig examples/regression.eig examples/sql.eig examples/mlflow.eig; do
+            eigrel plan --strict "$program"
+          done
+
       - name: Run examples end to end
         run: |
           eigrel run examples/ml.eig

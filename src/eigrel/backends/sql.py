@@ -48,6 +48,9 @@ class Query:
     source: ir.Load
     # The operations applied to the source, in order.
     ops: tuple[DatasetOp, ...]
+    # The source's columns when known (eigrel plan reads them), so fills and drop_missing can be
+    # expressed without a select.
+    source_columns: tuple[str, ...] | None = None
 
 
 def dialect_for(load: ir.Load) -> Dialect:
@@ -91,7 +94,7 @@ def render(query: Query) -> str:
     dialect = dialect_for(query.source)
     filled: dict[str, str] = {}
     conditions: list[str] = []
-    columns: tuple[str, ...] | None = None
+    columns: tuple[str, ...] | None = query.source_columns
     for op in query.ops:
         match op:
             case ir.Filter():

@@ -27,7 +27,7 @@ classifiers = [
 
 [project.optional-dependencies]
 # What `eigrel run` needs, by data source: `python` always, plus `sql` or `bigquery` when used.
-python = ['pandas>=3.0,<3.1', 'scikit-learn>=1.9,<1.10', 'pyarrow>=25,<26']
+python = ['pandas>=3.0,<3.1', 'scikit-learn>=1.9,<1.10', 'pyarrow>=25,<26', 'duckdb>=1.5,<1.6']
 sql = ['sqlalchemy>=2.1,<2.2']
 bigquery = ['google-cloud-bigquery>=3.46,<4', 'db-dtypes>=1.7,<2']
 # `eigrel run --target spark`; Spark also needs Java 17 or newer.

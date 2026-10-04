@@ -29,9 +29,11 @@ TASKS: tuple[ir.Task, ...] = ('classification', 'regression')
 class Dataset:
     op: int
     loc: Location
-    # None until a `select` makes the column set known at compile time.
+    # None until a `select` (or the source's schema) makes the column set known at compile time.
     columns: tuple[str, ...] | None = None
     features: tuple[str, ...] | None = None
+    # Column types, known when the source's schema is.
+    types: dict[str, ExprType] = field(default_factory=dict)
 
 
 @dataclass
@@ -52,6 +54,8 @@ class Analyzer:
     models: dict[str, Model] = field(default_factory=dict)
     # Metrics each model is evaluated with anywhere in the program, used to infer its task.
     planned_metrics: dict[str, list[ast.Name]] = field(default_factory=dict)
+    # Schemas read from the data by `eigrel plan`: dataset name -> (column, type) pairs.
+    schemas: dict[str, tuple[tuple[str, ExprType], ...]] = field(default_factory=dict)
 
     def analyze(self, program: ast.Program) -> ir.Graph:
         self._collect_planned_metrics(program)
@@ -95,8 +99,12 @@ class Analyzer:
             self._source_arg(arg, description, kind)
             for arg, (description, kind) in zip(call.args, source.args, strict=True)
         )
-        op = self.graph.add(ir.Load(self.graph.next_id(), decl.name, call.func, args))
-        self.datasets[decl.name] = Dataset(op, decl.loc)
+        op = self.graph.add(ir.Load(self.graph.next_id(), decl.name, call.func, args, loc=decl.loc))
+        dataset = Dataset(op, decl.loc)
+        if decl.name in self.schemas:
+            dataset.columns = tuple(column for column, _ in self.schemas[decl.name])
+            dataset.types = dict(self.schemas[decl.name])
+        self.datasets[decl.name] = dataset
 
     def _source_arg(self, arg: ast.Expr, description: str, kind: SourceArgKind) -> ir.SourceArg:
         if kind == 'url' and isinstance(arg, ast.Call) and arg.func == 'env':
@@ -136,31 +144,50 @@ class Analyzer:
                             op.condition.loc,
                         )
                     dataset.op = self.graph.add(
-                        ir.Filter(self.graph.next_id(), decl.dataset, dataset.op, op.condition)
+                        ir.Filter(
+                            self.graph.next_id(),
+                            decl.dataset,
+                            dataset.op,
+                            op.condition,
+                            loc=op.loc,
+                        )
                     )
                 case ast.SelectOp():
                     columns = self._columns(op.columns, dataset)
                     dataset.op = self.graph.add(
-                        ir.Select(self.graph.next_id(), decl.dataset, dataset.op, columns)
+                        ir.Select(
+                            self.graph.next_id(), decl.dataset, dataset.op, columns, loc=op.loc
+                        )
                     )
                     dataset.columns = columns
+                    dataset.types = {c: t for c, t in dataset.types.items() if c in columns}
                 case ast.FillOp():
                     values = []
                     for param in op.values:
                         self._check_column(param.name, param.loc, dataset)
-                        values.append((param.name, self._literal(param.value)))
+                        value = self._literal(param.value)
+                        self._check_fill_type(param, value, dataset)
+                        values.append((param.name, value))
                     _unique(
                         [column for column, _ in values],
                         [ast.Name(p.name, loc=p.loc) for p in op.values],
                         'column',
                     )
                     dataset.op = self.graph.add(
-                        ir.Fill(self.graph.next_id(), decl.dataset, dataset.op, tuple(values))
+                        ir.Fill(
+                            self.graph.next_id(),
+                            decl.dataset,
+                            dataset.op,
+                            tuple(values),
+                            loc=op.loc,
+                        )
                     )
                 case ast.DropMissingOp():
                     dropped = self._columns(op.columns, dataset) if op.columns else None
                     dataset.op = self.graph.add(
-                        ir.DropMissing(self.graph.next_id(), decl.dataset, dataset.op, dropped)
+                        ir.DropMissing(
+                            self.graph.next_id(), decl.dataset, dataset.op, dropped, loc=op.loc
+                        )
                     )
 
     def _features(self, decl: ast.FeaturesDecl) -> None:
@@ -254,6 +281,7 @@ class Analyzer:
                 target,
                 validation,
                 seed,
+                loc=stmt.loc,
             )
         )
         model.train_loc = stmt.loc
@@ -281,7 +309,7 @@ class Analyzer:
                     )
             metrics = _unique([name.value for name in names], names, 'metric')
         model.evaluated = self.graph.add(
-            ir.Evaluate(self.graph.next_id(), stmt.model, model.trained, metrics)
+            ir.Evaluate(self.graph.next_id(), stmt.model, model.trained, metrics, loc=stmt.loc)
         )
 
     def _register(self, stmt: ast.RegisterStmt) -> None:
@@ -306,6 +334,7 @@ class Analyzer:
                 name,
                 experiment,
                 model.evaluated,
+                loc=stmt.loc,
             )
         )
         model.register_loc = stmt.loc
@@ -370,7 +399,7 @@ class Analyzer:
         match expr:
             case ast.Name():
                 self._check_column(expr.value, expr.loc, dataset)
-                return 'unknown'
+                return dataset.types.get(expr.value, 'unknown')
             case ast.BoolLiteral():
                 return 'bool'
             case ast.IntLiteral() | ast.FloatLiteral():
@@ -489,6 +518,17 @@ class Analyzer:
                 return -v
         raise SemanticError('fill values must be constants, e.g. 0, "unknown" or false', expr.loc)
 
+    def _check_fill_type(self, param: ast.Param, value: ir.Value, dataset: Dataset) -> None:
+        expected = dataset.types.get(param.name, 'unknown')
+        actual: ExprType = (
+            'bool' if isinstance(value, bool) else 'string' if isinstance(value, str) else 'number'
+        )
+        if expected != 'unknown' and expected != actual:
+            raise SemanticError(
+                f"cannot fill the {expected} column '{param.name}' with a {actual}",
+                param.value.loc,
+            )
+
     def _text(self, param: ast.Param) -> str:
         if not isinstance(param.value, ast.StringLiteral) or not param.value.value:
             raise SemanticError(f"'{param.name}' must be a non-empty string", param.value.loc)
@@ -524,6 +564,12 @@ def _unique(values: list[str], nodes: list[ast.Name], what: str) -> tuple[str, .
     return tuple(values)
 
 
-def analyze(program: ast.Program) -> ir.Graph:
-    """Check that a program is meaningful and lower it into the IR graph."""
-    return Analyzer().analyze(program)
+def analyze(
+    program: ast.Program, schemas: dict[str, tuple[tuple[str, ExprType], ...]] | None = None
+) -> ir.Graph:
+    """Check that a program is meaningful and lower it into the IR graph.
+
+    `schemas` holds the columns of each dataset's source when they are known (from `eigrel plan`),
+    which lets the analysis check column names and types against the real data.
+    """
+    return Analyzer(schemas=dict(schemas or {})).analyze(program)

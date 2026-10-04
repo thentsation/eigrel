@@ -17,7 +17,14 @@ Verify-before-run loop for generating Eigrel programs:
 3. Each error has a `stage` (`lex`, `parse`, `semantic`, `io`), a `message`, and the exact
    `line` and `column` (1-based) it points at. Fix the first error and check again; later
    errors may be consequences of the first one.
-4. Once `ok` is `true`, the program compiles for sure:
+4. Once `ok` is `true`, the program compiles for sure. Before running it, run
+   `eigrel plan --json FILE.eig` (add `--target spark` for Spark). The plan reads the real data:
+   it re-checks the program against the actual column names and types, counts the rows every
+   step keeps, and returns `findings[]`, each with a `severity` (`error`, `warning`, `info`), a
+   stable `code` (e.g. `schema`, `target-missing`, `missing-values`, `imbalance`,
+   `small-validation`, `drift-removed`) and the `line` it concerns. Errors predict a failed run:
+   fix them. Warnings are judgement calls to report to the human.
+5. Then:
    - `eigrel compile FILE.eig` prints the generated Python (add `--target spark|sql`),
    - `eigrel run FILE.eig` runs it (needs `pip install "eigrel[python]"`),
    - `eigrel ir FILE.eig` shows the operation graph the backends work from.
@@ -168,5 +175,5 @@ register churn {
   human-facing version of the syntax, including backend differences.
 - [Examples](https://github.com/thentsation/eigrel/tree/main/examples): minimal programs,
   including `mlflow.eig` (fill/drop_missing/xgboost/register).
-- [CLI](https://github.com/thentsation/eigrel#cli): `init`, `check --json`, `run`, `compile`,
-  `ir`, `ast`, `tokens`.
+- [CLI](https://github.com/thentsation/eigrel#cli): `init`, `check --json`, `plan --json`, `run`,
+  `compile`, `ir`, `ast`, `tokens`.

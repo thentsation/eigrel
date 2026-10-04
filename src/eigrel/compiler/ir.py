@@ -20,6 +20,8 @@ class Op:
     id: int
     # The Eigrel name this value is bound to (dataset or model name).
     name: str
+    # Where the operation comes from in the program, for diagnostics; ignored by equality.
+    loc: Location | None = field(default=None, compare=False, kw_only=True)
 
 
 @dataclass(frozen=True)
@@ -136,6 +138,11 @@ def format_value(value: Value) -> str:
     return repr(value)
 
 
+def format_source(load: Load) -> str:
+    """A load's source in Eigrel syntax, e.g. csv("data/customers.csv")."""
+    return f'{load.format}({", ".join(_format_source_arg(arg) for arg in load.args)})'
+
+
 def _format_source_arg(arg: SourceArg) -> str:
     if isinstance(arg, EnvVar):
         return f'env("{arg.name}")'
@@ -148,8 +155,7 @@ def format_graph(graph: Graph) -> str:
     for op in graph.ops:
         match op:
             case Load():
-                args = ', '.join(_format_source_arg(arg) for arg in op.args)
-                body = f'load {op.format}({args})'
+                body = f'load {format_source(op)}'
             case Filter():
                 body = f'filter %{op.input} {format_expr(op.condition)}'
             case Select():

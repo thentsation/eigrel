@@ -69,12 +69,50 @@ The honest model scores 0.80 on this data. Good engineers leak data silently; a 
 the whole pipeline does not. The generated code is held to the same standard: encoders are fitted
 on the training split only, inside the model, so the validation split never leaks into them.
 
+## See the consequences before running: `eigrel plan`
+
+`eigrel plan` reads the data, checks the program against the real column names and types, and
+shows what every step does to it, without training anything:
+
+```text
+$ eigrel plan examples/ml.eig
+Plan for ml.eig (python backend)
+
+dataset customers ← csv("data/customers.csv")
+  columns: customer_id bigint, age bigint, income double, purchases bigint, churned bigint
+  rows: 400
+  filter (age >= 18)                           400 → 394 rows (-6)
+  select age, income, purchases, churned       394 rows
+
+train churn: random_forest classification on customers
+  split: 315 train / 79 validation (20%, stratified)
+  features: age, income, purchases
+  target churned: 0 209 (53%), 1 185 (47%)
+  missing values: none
+
+✓ no problems found
+state: no ml.eigstate yet; `eigrel plan --save` records the data schema so later plans can detect drift
+```
+
+When something would go wrong, the plan says so and points at the line:
+
+```text
+✗ error: line 9: features with missing values cannot be trained with logistic_regression: revenue (22); use fill or drop_missing first
+! warning: line 9: class imbalance: 'enterprise' has 4 rows (1%) against 424 for 'basic'
+! warning: line 9: less than one row(s) of class 'enterprise' expected in the validation split (20%); its metrics will be unstable
+```
+
+`eigrel plan --save` records each source's schema in `PROGRAM.eigstate`; commit it, and later
+plans report drift (removed columns, changed types, row counts). `--json` gives the same plan to
+tools and agents, `--target spark` applies Spark's limits, and `--strict` turns warnings into a
+failing exit code for CI.
+
 ## Status
 
-Eigrel 0.6 reads CSV, Parquet, JSON, SQL databases and BigQuery, cleans missing values, trains
+Eigrel 0.7 reads CSV, Parquet, JSON, SQL databases and BigQuery, cleans missing values, trains
 scikit-learn, XGBoost or Spark MLlib models and registers them in MLflow, compiling the same program
-to Python, Spark or SQL. Next is `eigrel plan`: see the consequences of a pipeline before running
-it. See the [roadmap](docs/ROADMAP.md).
+to Python, Spark or SQL, and `eigrel plan` shows the consequences before anything runs. Next: making
+the serving path reuse the training pipeline. See the [roadmap](docs/ROADMAP.md).
 
 ## Getting started
 
@@ -102,6 +140,7 @@ churn: random_forest classification, trained on 315 rows, validated on 79
 |---|---|
 | `eigrel run FILE [-t python\|spark]` | Compiles the program and runs it (default: Python) |
 | `eigrel check FILE... [--json]` | Reports syntax and semantic errors with line and column (`--json`: machine-readable) |
+| `eigrel plan FILE [-t python\|spark] [--json] [--save] [--strict]` | Checks the program against its data and shows row counts, classes, warnings and drift |
 | `eigrel compile FILE [-t python\|spark\|sql] [-o PATH]` | Prints (or writes) the generated code |
 | `eigrel ir FILE` | Prints the intermediate representation |
 | `eigrel ast FILE` | Prints the syntax tree as JSON |
