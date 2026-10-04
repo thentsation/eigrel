@@ -1,4 +1,4 @@
-# Eigrel language reference (v0.5)
+# Eigrel language reference (v0.7)
 
 This describes the syntax the parser accepts and the rules the compiler checks before generating
 code. Every rule below is reported at compile time, with the line and column of the problem.
@@ -168,6 +168,42 @@ it in the model registry: the training parameters, the metrics of the latest `ev
 (if any), and the model itself, which takes raw rows. Both parameters are optional (`name` defaults
 to the model's name). MLflow uses `MLFLOW_TRACKING_URI`, or `mlflow.db` next to the program when it
 is unset. Needs the `mlflow` extra.
+
+## Plans
+
+`eigrel plan` is the step between `check` and `run`. `check` never touches data; `plan` reads it:
+
+1. It reads the schema of every source (DuckDB for files, SQLAlchemy for databases) and checks
+   the program again against the real columns and types. A misspelled column, `age >= "18"` on a
+   numeric column or `fill income = "none"` become errors with the exact location (code `schema`).
+2. It compiles each step to SQL and runs counts inside the engine, so only numbers come back:
+   rows after every `filter`, `fill` or `drop_missing`, missing values per feature, and the class
+   counts of every classification target.
+3. It reports findings, each with a severity, a stable code and a line:
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `source`, `probe` | error | a source cannot be read or queried |
+| `schema` | error | the program does not match the data |
+| `empty` | error | a dataset has no rows left |
+| `target-missing` | error | the target has missing values; training would fail |
+| `missing-values` | error | numeric features with missing values, for an algorithm or backend that rejects them |
+| `text-target` | error | regression on a text target |
+| `one-class` | error | the target has a single class |
+| `capability` | error | the backend cannot do this (e.g. multiclass gradient boosting on Spark) |
+| `continuous-target` | warning | classification on a numeric target with many distinct values |
+| `imbalance` | warning | the smallest class is under 10% of the rows |
+| `small-validation` | warning | fewer than 5 rows of a class are expected in the validation split |
+| `no-stratify` | warning | a class has a single row, so the split cannot be stratified |
+| `tiny` | warning | fewer than 30 training rows |
+| `drift-removed`, `drift-type` | warning | columns removed or retyped since the recorded state |
+| `drift-rows` | warning / info | the row count changed (warning above 50%) |
+| `drift-added`, `drift-new` | info | new columns, or a dataset not in the recorded state |
+| `not-probed` | info | BigQuery sources are not probed, because every query costs money |
+
+`--save` writes `PROGRAM.eigstate` (each source's columns, native types, row count and a
+fingerprint). Commit it next to the program: later plans compare against it and report drift.
+The exit status is 1 when there are errors, and 2 with `--strict` when there are warnings.
 
 ## Spark backend
 
