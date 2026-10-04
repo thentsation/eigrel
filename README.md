@@ -42,10 +42,10 @@ evaluate churn {
 
 ## Status
 
-Eigrel is at **v0.3 — Data**: programs read CSV, Parquet, JSON, SQL databases and BigQuery, are
+Eigrel is at **v0.4 — Spark**: programs read CSV, Parquet, JSON, SQL databases and BigQuery, are
 checked for meaning, lowered into an intermediate representation and compiled to Python (pandas +
-scikit-learn) or SQL, so `eigrel run` trains and evaluates real models. Next up: a Spark backend
-(v0.4). See the [roadmap](docs/ROADMAP.md).
+scikit-learn), Apache Spark (PySpark + MLlib) or SQL. The same program runs on your laptop or on a
+Spark cluster. Next up: MLflow and more ML (v0.5). See the [roadmap](docs/ROADMAP.md).
 
 ## Getting started
 
@@ -71,9 +71,9 @@ churn: random_forest classification, trained on 315 rows, validated on 79
 
 | Command | What it does |
 |---|---|
-| `eigrel run FILE` | Compiles the program to Python and runs it |
+| `eigrel run FILE [-t python\|spark]` | Compiles the program and runs it (default: Python) |
 | `eigrel check FILE...` | Reports syntax and semantic errors with line and column |
-| `eigrel compile FILE [-t python\|sql] [-o PATH]` | Prints (or writes) the generated Python or SQL |
+| `eigrel compile FILE [-t python\|spark\|sql] [-o PATH]` | Prints (or writes) the generated code |
 | `eigrel ir FILE` | Prints the intermediate representation |
 | `eigrel ast FILE` | Prints the syntax tree as JSON |
 | `eigrel tokens FILE` | Prints the token stream |
@@ -121,6 +121,21 @@ source lives in:
 -- dataset users (bigquery, bigquery dialect)
 SELECT `age`, `income`, `country` FROM `project.dataset.users` WHERE ((`age` > 18) AND (`income` <> 0));
 ```
+
+### Spark
+
+The same program runs on Spark with `--target spark`, which needs the `spark` extra and Java 17 or
+newer:
+
+```bash
+pip install "eigrel[python,spark]"
+eigrel run --target spark churn/main.eig
+eigrel compile --target spark churn/main.eig -o churn_spark.py   # e.g. for spark-submit
+```
+
+Files are read natively, `sql()` through JDBC and `bigquery()` through the spark-bigquery connector,
+and models train with Spark MLlib. See [the Spark backend](docs/LANGUAGE.md#spark-backend) for how
+it differs from the Python backend.
 
 ### Docker
 

@@ -184,9 +184,9 @@ def test_sql_source_with_env_url(
     assert 'import os\n' in code
     assert 'from sqlalchemy import create_engine' in code
     assert (
-        """d = pd.read_sql_query('SELECT * FROM "rows"', create_engine(os.environ['SHOP_DB']))"""
-        in code
-    )
+        "with create_engine(os.environ['SHOP_DB'], poolclass=NullPool).connect() as connection:\n"
+        """    d = pd.read_sql_query('SELECT * FROM "rows"', connection)"""
+    ) in code
     assert 'trained on 76 rows' in capsys.readouterr().out
 
 

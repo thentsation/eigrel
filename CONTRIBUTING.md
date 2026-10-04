@@ -48,12 +48,15 @@ make check-examples
 make run-examples # runs the examples end to end
 ```
 
+Tests marked `spark` run programs on a local Spark session; they are skipped unless pyspark and a
+Java 17+ runtime are available (`pytest -m spark` runs only them). CI runs them in the `spark` job.
+
 ## Code layout
 
 | Path | Contents |
 |---|---|
 | `src/eigrel/compiler/` | Front end and middle: lexer, parser, AST, semantic analysis, IR, catalog of sources/algorithms/metrics, diagnostics |
-| `src/eigrel/backends/` | Code generators from IR (`python.py`: pandas + scikit-learn; `sql.py`: one query per dataset) |
+| `src/eigrel/backends/` | Code generators from IR: `python.py` (pandas + scikit-learn), `spark.py` (PySpark + MLlib), `sql.py` (one query per dataset), and `naming.py` (clash-free variable names) |
 | `src/eigrel/cli.py` | The `eigrel` command |
 | `src/eigrel/starter.py` | Program and sample data created by `eigrel init` |
 | `tests/` | pytest suite |
@@ -74,7 +77,7 @@ Every pull request runs these workflows, and all of them must pass:
 
 | Workflow | What it checks |
 |---|---|
-| `ci` | Ruff, mypy, the test suite on Linux, macOS and Windows with Python 3.13 and 3.14, the examples end to end, and `pip-audit` |
+| `ci` | Ruff, mypy, the test suite on Linux, macOS and Windows with Python 3.13 and 3.14, the Spark tests and examples on Java 21, the examples end to end, and `pip-audit` |
 | `docker` | The image builds, the CLI runs inside it, and Trivy finds no high or critical issues |
 | `codeql` | CodeQL on the Python code and the workflows, plus [zizmor](https://docs.zizmor.sh/) on the workflows |
 

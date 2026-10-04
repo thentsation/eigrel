@@ -5,7 +5,7 @@
 | v0.1 | Language | Lexer, parser, AST, basic types, datasets, transformations, CLI | ✅ done |
 | v0.2 | Compiler | Semantic analysis, Eigrel IR, execution graph, Python backend | ✅ done |
 | v0.3 | Data | CSV, Parquet, JSON, SQL databases, BigQuery, `env()` secrets, SQL backend | ✅ done |
-| v0.4 | Spark | Spark backend: PySpark for data operations, Spark MLlib for training | |
+| v0.4 | Spark | Spark backend: PySpark for data operations, Spark MLlib for training | ✅ done |
 | v0.5 | ML | Features, models, training, evaluation, MLflow (`register`) | |
 | v0.6 | Optimizer | Filter/projection pushdown, CSE, DAG optimization, backend selection, execution planning | |
 | v0.7 | GenAI | Embeddings, vector stores, RAG (`knowledge`, `assistant`), LLMs, evaluation | |
@@ -22,7 +22,7 @@ Lexer → Parser → AST → Semantic analysis → Eigrel IR → Optimizer
                                                           │
                                    ┌──────────────────────┼──────────────────────┐
                                    ▼                      ▼                      ▼
-                              Python ✅               SQL ✅                 Spark
+                              Python ✅               SQL ✅                Spark ✅
 ```
 
 Later backends: PyTorch, MLIR, BigQuery, cloud runtimes.

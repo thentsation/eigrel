@@ -85,6 +85,40 @@ jobs:
           eigrel run examples/regression.eig
           eigrel run examples/sql.eig
 
+  spark:
+    name: spark
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: '3.14'
+          activate-environment: true
+
+      - name: Install dependencies
+        run: uv pip install -r config/requirements-dev.txt -e '.[python,sql,spark]'
+
+      - name: Run Spark tests
+        run: pytest -m spark -v
+
+      - name: Run examples on Spark
+        run: |
+          eigrel run --target spark examples/ml.eig
+          eigrel run --target spark examples/regression.eig
+          eigrel run --target spark examples/sql.eig
+
   audit:
     name: audit
     runs-on: ubuntu-latest
