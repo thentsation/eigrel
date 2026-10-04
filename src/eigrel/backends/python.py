@@ -80,6 +80,8 @@ MODEL_HELPERS = (
     '_scores',
     '_metrics',
     '_encoder',
+    '_categorical',
+    '_preprocess',
     '_registered',
 )
 
@@ -100,6 +102,9 @@ RESERVED = {
     'len',
     'set',
     'train_test_split',
+    'ColumnTransformer',
+    'OneHotEncoder',
+    'Pipeline',
     *(function for function, _ in METRIC_FUNCTIONS.values()),
     *(cls for _, *classes, _ in ESTIMATORS.values() for cls in classes if cls is not None),
 }
@@ -211,6 +216,9 @@ class _Generator:
         assert estimator is not None, 'semantic analysis rejects unsupported tasks'
         self._import(module, estimator)
         self._import('sklearn.model_selection', 'train_test_split')
+        self._import('sklearn.compose', 'ColumnTransformer')
+        self._import('sklearn.pipeline', 'Pipeline')
+        self._import('sklearn.preprocessing', 'OneHotEncoder')
 
         kwargs = [f'{PARAM_NAMES.get(key, key)}={value!r}' for key, value in op.params]
         if seeded:
@@ -225,7 +233,9 @@ class _Generator:
 
         self._section(f'Train {op.name}: {op.algorithm} ({op.task})')
         self.lines += [
-            f'{model}_X = pd.get_dummies({features})',
+            # Raw feature columns: the encoding lives inside the model, not in the frame, so the
+            # whole pipeline can be applied to raw data later (train/serve parity).
+            f'{model}_X = {features}',
             f'{model}_y = {data}[{op.target!r}]',
             f'{model}_X_train, {model}_X_test, {model}_y_train, {model}_y_test = train_test_split(',
             f'    {model}_X,',
@@ -234,7 +244,24 @@ class _Generator:
             f'    random_state={op.seed},',
             f'    stratify={stratify},',
             ')',
-            f'{model} = {estimator}({", ".join(kwargs)})',
+            '',
+            '# The encoder is fit on the training rows only, and travels inside the model, so',
+            '# the same model transforms raw data on its own and never sees validation rows.',
+            f'{model}_categorical = [',
+            (
+                f'    column for column in {model}_X_train'
+                f' if not pd.api.types.is_numeric_dtype({model}_X_train[column])'
+            ),
+            ']',
+            f'{model}_preprocess = ColumnTransformer(',
+            "    [('categorical', OneHotEncoder(handle_unknown='ignore', sparse_output=False),",
+            f'        {model}_categorical)],',
+            "    remainder='passthrough',",
+            ')',
+            f'{model} = Pipeline([',
+            f"    ('preprocess', {model}_preprocess),",
+            f"    ('model', {estimator}({', '.join(kwargs)})),",
+            '])',
             *self._fit(op, model),
             (
                 f"print(f'{op.name}: {op.algorithm} {op.task},"
@@ -304,14 +331,17 @@ class _Generator:
             model,
             "name='model'",
             f'registered_model_name={op.registered_name!r}',
+            # The example is raw training data: the model transforms it on its own, and MLflow
+            # infers the input schema from it, rejecting malformed requests at serving time.
             f'input_example={model}_X_train.head(5)',
         ]
         if train.algorithm == 'xgboost':
-            flavor = 'mlflow.xgboost'
+            # skops cannot serialize xgboost estimators, so the pipeline is saved with
+            # cloudpickle instead.
+            options.append("serialization_format='cloudpickle'")
         else:
             # MLflow saves scikit-learn models with skops, which asks which types to trust; the
             # model was trained just above, so all of its own types are trusted.
-            flavor = 'mlflow.sklearn'
             options.append(
                 f'skops_trusted_types=skops.io.get_untrusted_types(data=skops.io.dumps({model}))'
             )
@@ -335,7 +365,9 @@ class _Generator:
         if op.evaluation is not None:
             self.lines.append(f'    mlflow.log_metrics({model}_metrics)')
         self.lines += [
-            f'    {model}_registered = {flavor}.log_model(',
+            '    # The whole pipeline is registered, so the model version accepts the raw',
+            '    # columns the program trained on and applies every transform itself.',
+            f'    {model}_registered = mlflow.sklearn.log_model(',
             *(f'        {option},' for option in options),
             '    )',
             f'print({message!r}, {model}_registered.registered_model_version)',
