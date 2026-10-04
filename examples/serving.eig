@@ -1,0 +1,42 @@
+# Train on past customers and score new ones with the same pipeline.
+#
+# The compiler guarantees the serving path matches training: new_customers must provide every
+# feature the model learned from, with the same types, and receives the same fills. The split is
+# chronological here: customer_id grows with time, so validation uses the latest customers.
+
+dataset customers from csv("data/customers.csv")
+
+transform customers {
+    filter age >= 18
+    fill income = 0
+}
+
+assumptions customers {
+    time = customer_id
+}
+
+features customers {
+    age
+    income
+    purchases
+}
+
+model churn = gradient_boosting {
+    trees = 100
+    max_depth = 3
+}
+
+train churn {
+    target = churned
+}
+
+evaluate churn {
+    metrics = [accuracy, f1, auc]
+}
+
+dataset new_customers from csv("data/new_customers.csv")
+
+predict churn {
+    data = new_customers
+    output = csv("data/scored.csv")
+}

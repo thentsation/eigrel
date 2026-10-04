@@ -118,7 +118,7 @@ def test_training_and_evaluation_code() -> None:
     )
     assert "m_features = ['a', 'b']" in code
     assert "r_features = ['a', 'b']" in code
-    assert "n_features = [c for c in e.columns if c != 'y']" in code
+    assert "n_features = [c for c in e.columns if c not in ('y',)]" in code
     assert 'm_train, m_test = m_data.randomSplit([0.75, 0.25], seed=7)' in code
     assert "m_evaluator.setMetricName('accuracy')" in code
     assert (

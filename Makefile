@@ -32,6 +32,7 @@ run-examples:
 	$(VENV)/bin/eigrel run examples/regression.eig
 	$(VENV)/bin/eigrel run examples/sql.eig
 	$(VENV)/bin/eigrel run examples/mlflow.eig
+	$(VENV)/bin/eigrel run examples/serving.eig
 
 lock:
 	uv pip compile config/requirements.txt --output-file=config/requirements.lock --universal

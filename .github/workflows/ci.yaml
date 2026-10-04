@@ -85,7 +85,7 @@ jobs:
 
       - name: Plan examples against their data
         run: |
-          for program in examples/ml.eig examples/regression.eig examples/sql.eig examples/mlflow.eig; do
+          for program in examples/ml.eig examples/regression.eig examples/sql.eig examples/mlflow.eig examples/serving.eig; do
             eigrel plan --strict "$program"
           done
 
@@ -95,6 +95,7 @@ jobs:
           eigrel run examples/regression.eig
           eigrel run examples/sql.eig
           eigrel run examples/mlflow.eig
+          eigrel run examples/serving.eig
 
   spark:
     name: spark
@@ -130,6 +131,7 @@ jobs:
           eigrel run --target spark examples/regression.eig
           eigrel run --target spark examples/sql.eig
           eigrel run --target spark examples/mlflow.eig
+          eigrel run --target spark examples/serving.eig
 
   audit:
     name: audit

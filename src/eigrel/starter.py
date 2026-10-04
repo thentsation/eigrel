@@ -63,6 +63,16 @@ def write_sample_customers(path: Path) -> None:
         writer.writerows(sample_customers())
 
 
+def write_new_customers(path: Path, rows: int = 50) -> None:
+    """Customers to score: the same columns without `churned`, some incomes missing."""
+    with path.open('w', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file, lineterminator='\n')
+        writer.writerow(COLUMNS[:-1])
+        for customer_id, age, income, purchases, _ in sample_customers(rows, seed=11):
+            missing_income = customer_id % 10 == 0
+            writer.writerow([1000 + customer_id, age, '' if missing_income else income, purchases])
+
+
 def write_sample_database(path: Path) -> None:
     """Write the sample churn data as a SQLite database with a `customers` table."""
     path.unlink(missing_ok=True)

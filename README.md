@@ -69,6 +69,20 @@ The honest model scores 0.80 on this data. Good engineers leak data silently; a 
 the whole pipeline does not. The generated code is held to the same standard: encoders are fitted
 on the training split only, inside the model, so the validation split never leaks into them.
 
+## Guarantees across the model's life
+
+- **No leakage in the pipeline.** Encoders are fitted on the training split only, inside the
+  model; the target can never be a feature.
+- **Time-ordered validation.** `assumptions customers { time = signup_date }` validates on the
+  latest rows; `eigrel plan` warns when dated data is split at random.
+- **No train/serve skew.** `predict churn { data = new_customers, output = csv("scored.csv") }`
+  must receive every training feature with the same types, and gets the training fills replayed;
+  anything else is a compile error. Registered models predict the original classes.
+- **Clear backend limits.** A [capability matrix](docs/LANGUAGE.md#backend-capabilities) says what
+  each backend supports, and the plan checks programs against it.
+
+See [`examples/serving.eig`](examples/serving.eig).
+
 ## See the consequences before running: `eigrel plan`
 
 `eigrel plan` reads the data, checks the program against the real column names and types, and
@@ -109,10 +123,11 @@ failing exit code for CI.
 
 ## Status
 
-Eigrel 0.7 reads CSV, Parquet, JSON, SQL databases and BigQuery, cleans missing values, trains
-scikit-learn, XGBoost or Spark MLlib models and registers them in MLflow, compiling the same program
-to Python, Spark or SQL, and `eigrel plan` shows the consequences before anything runs. Next: making
-the serving path reuse the training pipeline. See the [roadmap](docs/ROADMAP.md).
+Eigrel 0.8 reads CSV, Parquet, JSON, SQL databases and BigQuery, cleans missing values, trains
+scikit-learn, XGBoost or Spark MLlib models, scores new data with the training pipeline and
+registers models in MLflow, compiling the same program to Python, Spark or SQL. `eigrel plan`
+shows the consequences before anything runs. Next: agents (an MCP server). See the
+[roadmap](docs/ROADMAP.md).
 
 ## Getting started
 

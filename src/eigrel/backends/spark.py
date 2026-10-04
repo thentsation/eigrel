@@ -90,6 +90,9 @@ MODEL_HELPERS = (
     '_evaluator',
     '_auc',
     '_registered',
+    '_ranked',
+    '_input',
+    '_scored',
 )
 DATASET_HELPERS = ('_jdbc', '_package')
 RESERVED = {
@@ -177,6 +180,8 @@ class _Generator:
                     self._evaluate(op)
                 case ir.Register():
                     self._register(op)
+                case ir.Predict():
+                    self._predict(op)
         return (
             '\n'.join([*self._header(), *self._session(), *self.lines, '', 'spark.stop()']) + '\n'
         )
@@ -303,7 +308,8 @@ class _Generator:
             self.modules.add('logging')
             self.lines.append("logging.getLogger('XGBoost-PySpark').setLevel(logging.WARNING)")
         if op.features is None:
-            features = f'[c for c in {data}.columns if c != {op.target!r}]'
+            excluded = (op.target,) if op.time is None else (op.target, op.time)
+            features = f'[c for c in {data}.columns if c not in {excluded!r}]'
         else:
             features = repr(list(op.features))
         validation = op.validation
@@ -328,9 +334,13 @@ class _Generator:
                 # Text targets are indexed outside the model's pipeline, so the trained model
                 # does not need the target column to predict.
                 f"if dict({data}.dtypes)[{op.target!r}] == 'string':",
-                f'    {model}_labels = StringIndexer(inputCol={op.target!r}, outputCol={LABEL!r})',
-                f'    {model}_data = {model}_labels.fit({data}).transform({data})',
+                (
+                    f'    {model}_labels = StringIndexer(inputCol={op.target!r}, outputCol={LABEL!r})'
+                    f'.fit({data})'
+                ),
+                f'    {model}_data = {model}_labels.transform({data})',
                 'else:',
+                f'    {model}_labels = None',
                 f"    {model}_data = {data}.withColumn({LABEL!r}, F.col({op.target!r}).cast('double'))",
                 '# Like the Python backend, 0/1 targets report metrics for the positive class.',
                 f"{model}_binary = dict({data}.dtypes)[{op.target!r}] != 'string' and {{",
@@ -341,11 +351,29 @@ class _Generator:
             self.lines.append(
                 f"{model}_data = {data}.withColumn({LABEL!r}, F.col({op.target!r}).cast('double'))"
             )
-        self.lines += [
-            (
+        if op.time is not None:
+            # Declared time column: train on the earliest rows, validate on the latest ones.
+            self._import('pyspark.sql', 'Window')
+            rank = '__eigrel_rank'
+            self.lines += [
+                f'{model}_ranked = {model}_data.withColumn(',
+                f'    {rank!r}, F.percent_rank().over(Window.orderBy({op.time!r}))',
+                ')',
+                (
+                    f'{model}_train = {model}_ranked.filter(F.col({rank!r}) < {1 - validation!r})'
+                    f'.drop({rank!r})'
+                ),
+                (
+                    f'{model}_test = {model}_ranked.filter(F.col({rank!r}) >= {1 - validation!r})'
+                    f'.drop({rank!r})'
+                ),
+            ]
+        else:
+            self.lines.append(
                 f'{model}_train, {model}_test = {model}_data.randomSplit('
                 f'[{1 - validation!r}, {validation!r}], seed={op.seed})'
-            ),
+            )
+        self.lines += [
             (
                 f'{model} = Pipeline(stages=[*{model}_stages, {estimator}({", ".join(kwargs)})])'
                 f'.fit({model}_train)'
@@ -355,6 +383,22 @@ class _Generator:
                 f" trained on {{{model}_train.count()}} rows, validated on {{{model}_test.count()}}')"
             ),
         ]
+        if op.task == 'classification':
+            # The model ends by turning label indices back into the original classes, so it (and
+            # any registered version of it) predicts them in `<target>_prediction`.
+            self._import('pyspark.ml', 'PipelineModel')
+            self._import('pyspark.ml.feature', 'IndexToString')
+            decoded = f'{op.target}_prediction'
+            self.lines += [
+                f'if {model}_labels is not None:',
+                f'    {model} = PipelineModel(stages=[',
+                f'        *{model}.stages,',
+                (
+                    f"        IndexToString(inputCol='prediction', outputCol={decoded!r},"
+                    f' labels={model}_labels.labels),'
+                ),
+                '    ])',
+            ]
         self.trained[op.id] = op.task
 
     def _evaluate(self, op: ir.Evaluate) -> None:
@@ -400,6 +444,41 @@ class _Generator:
                 repr(binary) if binary == other else f'{binary!r} if {model}_binary else {other!r}'
             )
             self.lines += [f'{model}_evaluator.setMetricName({name})', *record(metric)]
+
+    def _predict(self, op: ir.Predict) -> None:
+        model = self.variables[op.model]
+        data = self.variables[op.input]
+        train = self.graph.ops[op.model]
+        assert isinstance(train, ir.Train)
+        column = f'{train.target}_prediction'
+        self._section(f'Predict with {op.name} on {self.graph.ops[op.input].name}')
+        # The serving rows get the training data's fills, then go through the trained pipeline.
+        source = f'{data}.fillna({dict(op.fills)!r})' if op.fills else data
+        self.lines += [
+            f'{model}_input = {source}',
+            f'{model}_scored = {model}.transform({model}_input)',
+        ]
+        if train.task == 'classification':
+            self.lines += [
+                f'if {column!r} not in {model}_scored.columns:',
+                f"    {model}_scored = {model}_scored.withColumn({column!r}, F.col('prediction'))",
+            ]
+        else:
+            self.lines.append(
+                f"{model}_scored = {model}_scored.withColumn({column!r}, F.col('prediction'))"
+            )
+        writer = (
+            f"{model}_scored.select(*{model}_input.columns, {column!r}).write.mode('overwrite')"
+        )
+        if op.format == 'csv':
+            write = f"{writer}.option('header', True).csv({op.path!r})"
+        else:
+            write = f'{writer}.{op.format}({op.path!r})'
+        self.lines += [
+            '# Spark writes a directory of part files at the output path.',
+            write,
+            f"print({f'{op.name}: predicted'!r}, {model}_scored.count(), 'rows into', {op.path!r})",
+        ]
 
     def _register(self, op: ir.Register) -> None:
         model = self.variables[op.model]

@@ -46,6 +46,8 @@ KEYWORDS = frozenset(
         'train',
         'evaluate',
         'register',
+        'assumptions',
+        'predict',
         'fill',
         'drop_missing',
         'and',

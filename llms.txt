@@ -159,6 +159,28 @@ register churn {
 }
 ```
 
+### assumptions
+
+Declare a dataset's time column; every model trained on it then validates on the latest rows.
+
+```eigrel
+assumptions customers {
+    time = signup_date
+}
+```
+
+### predict
+
+Score a dataset with a trained model. The data must provide every training feature with the same
+types; training fills are replayed. Writes `<target>_prediction` (and `<target>_probability`).
+
+```eigrel
+predict churn {
+    data = new_customers
+    output = csv("scored.csv")
+}
+```
+
 ## Semantics the compiler enforces (fix these before checking)
 
 - Every referenced column must exist. Columns are known only after a `select` or from a

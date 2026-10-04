@@ -24,12 +24,12 @@ does around it.
 | 0.4 | Spark | Spark backend: PySpark for data, MLlib for training |
 | 0.5 – 0.6 | ML | `fill`, `drop_missing`, XGBoost, MLflow `register`, leak-free encoding pipeline, Spark parity, `check --json`, [`llms.txt`](../llms.txt) |
 | 0.7 | Plan | `eigrel plan`: schema inference, schema contracts, row counts, class balance, findings with codes, `--json`, `.eigstate` with drift detection |
+| 0.8 | Guarantees | `predict` that reuses the training pipeline (skew is a compile error), `assumptions { time }` with time-ordered splits and `random-split` warnings, a backend capability matrix, labels decoded inside registered models |
 
 ## Next
 
 | Version | Theme | Scope |
 |---|---|---|
-| 0.8 | Guarantees | `predict` that must reuse the training pipeline (train/serve skew becomes a compile error); `assumptions { time = ... }` and temporal leakage checks; a capability matrix per backend with clear errors; labels decoded inside the registered model |
 | 0.9 | Agents | MCP server exposing check, plan, compile and run as tools; few-shot examples in `llms.txt` |
 | 1.0 | Stable | Grammar and JSON contracts frozen under semantic versioning; complete documentation |
 

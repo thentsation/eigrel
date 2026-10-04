@@ -314,8 +314,8 @@ def test_xgboost_with_text_target_and_features(
         tmp_path,
         monkeypatch,
     )
-    assert 'm_encoder = LabelEncoder().fit(m_y)' in code
-    assert 'm_pred = m_encoder.inverse_transform(m.predict(m_X_test))' in code
+    assert 'EncodedLabelClassifier(XGBClassifier(' in code
+    assert 'm_pred = m.predict(m_X_test)' in code
     assert 'r.fit(r_X_train, r_y_train)' in code
     out = capsys.readouterr().out
     assert 'm: xgboost classification' in out and 'r: xgboost regression' in out

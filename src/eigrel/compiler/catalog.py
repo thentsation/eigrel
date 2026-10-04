@@ -79,3 +79,32 @@ DEFAULT_METRICS: dict[Task, tuple[str, ...]] = {
 
 DEFAULT_VALIDATION = 0.2
 DEFAULT_SEED = 42
+
+
+# What each backend can do. `eigrel plan` checks programs against it, and docs/LANGUAGE.md shows it
+# as a table that a test keeps in sync. Values: 'yes', 'no', or a short note on the limit.
+BACKENDS = ('python', 'spark', 'sql')
+CAPABILITIES: dict[str, dict[str, str]] = {
+    'csv, parquet, json sources': {'python': 'yes', 'spark': 'yes', 'sql': 'yes (DuckDB)'},
+    'sql() sources': {'python': 'yes', 'spark': 'yes (JDBC)', 'sql': 'yes'},
+    'bigquery() sources': {'python': 'yes', 'spark': 'yes (connector)', 'sql': 'yes'},
+    'filter, select, fill, drop_missing': {'python': 'yes', 'spark': 'yes', 'sql': 'yes'},
+    'training and evaluation': {'python': 'yes', 'spark': 'yes', 'sql': 'no'},
+    'missing values in numeric features': {
+        'python': 'random_forest, decision_tree, xgboost',
+        'spark': 'no',
+        'sql': 'no',
+    },
+    'multiclass gradient_boosting': {'python': 'yes', 'spark': 'no', 'sql': 'no'},
+    'auc on multiclass targets': {'python': 'yes', 'spark': 'no', 'sql': 'no'},
+    'stratified validation split': {'python': 'yes', 'spark': 'no', 'sql': 'no'},
+    'time-ordered split (assumptions)': {'python': 'yes', 'spark': 'yes', 'sql': 'no'},
+    'register (MLflow)': {'python': 'yes', 'spark': 'yes', 'sql': 'no'},
+    'predict': {'python': 'yes', 'spark': 'yes', 'sql': 'no'},
+}
+
+
+def handles_missing_values(backend: str, algorithm: str) -> bool:
+    """Whether a backend trains this algorithm on features with missing numeric values."""
+    supported = CAPABILITIES['missing values in numeric features'][backend]
+    return algorithm in supported.split(', ')
