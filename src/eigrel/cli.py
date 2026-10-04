@@ -8,7 +8,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from eigrel import __version__
+from eigrel import __version__, planner
 from eigrel.backends import UnsupportedError
 from eigrel.backends import python as python_backend
 from eigrel.backends import spark as spark_backend
@@ -190,6 +190,23 @@ def cmd_run(args: argparse.Namespace) -> int:
         return subprocess.run([sys.executable, str(script)], cwd=workdir, check=False).returncode
 
 
+def cmd_plan(args: argparse.Namespace) -> int:
+    plan = planner.build_plan(Path(args.file), args.target)
+    if args.json:
+        print(json.dumps(planner.to_json(plan), indent=2, default=str))
+    else:
+        print(planner.render(plan), end='')
+    if not plan.ok:
+        return 1
+    if args.save:
+        path = planner.save_state(plan)
+        if not args.json:
+            print(f'saved {path}')
+    if args.strict and any(f.severity == 'warning' for f in plan.findings):
+        return 2
+    return 0
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     root = Path(args.name)
     if root.exists():
@@ -229,6 +246,24 @@ def build_parser() -> argparse.ArgumentParser:
         choices=sorted(RUNNERS),
         default='python',
         help='backend to run on (default: python)',
+    )
+    plan = command('plan', 'show what a program will do to its data, before running it', cmd_plan)
+    plan.add_argument('file', metavar='FILE')
+    plan.add_argument(
+        '-t',
+        '--target',
+        choices=sorted(RUNNERS),
+        default='python',
+        help='backend whose limits apply (default: python)',
+    )
+    plan.add_argument('--json', action='store_true', help='print the plan as JSON')
+    plan.add_argument(
+        '--save',
+        action='store_true',
+        help='record the data schema in FILE.eigstate for drift checks',
+    )
+    plan.add_argument(
+        '--strict', action='store_true', help='exit with status 2 when there are warnings'
     )
     compile_cmd = command('compile', 'print the generated code (Python, Spark or SQL)', cmd_compile)
     compile_cmd.add_argument('file', metavar='FILE')
