@@ -1,4 +1,4 @@
-# Eigrel language reference (v0.4)
+# Eigrel language reference (v0.5)
 
 This describes the syntax the parser accepts and the rules the compiler checks before generating
 code. Every rule below is reported at compile time, with the line and column of the problem.
@@ -87,14 +87,27 @@ when the URL comes from `env()`. Models are not part of the SQL output.
 which columns exist; after one, every column used later (in `filter`, `features` or `target`) must
 be among the selected columns.
 
+```text
+transform D {
+    fill income = 0, city = "unknown"      // literals for missing values
+    drop_missing age, purchases            // drop rows missing in these columns...
+    drop_missing                            // ...or in any column
+    filter age >= 18
+    select age, income, purchases
+}
+```
+
 `filter` takes a boolean expression. Operands are type checked: arithmetic needs numbers, `and`,
 `or` and `not` need booleans, and comparisons need values of the same type. Function calls and
-lists are not allowed in filters.
+lists are not allowed in filters. `fill` takes `column = literal` pairs (numbers, strings or
+booleans); `drop_missing` takes an optional column list.
 
 ### Features
 
 `features D { ... }` declares the input columns used to train on dataset `D`, once per dataset.
-Without it, a model trains on every column except the target. Text columns are one-hot encoded.
+Without it, a model trains on every column except the target. Categorical columns are one-hot
+encoded by the trained model itself, so the same model transforms raw data later (see
+Registration).
 
 ### Models
 
@@ -103,6 +116,7 @@ Without it, a model trains on every column except the target. Text columns are o
 | `random_forest` | classification, regression | `trees`, `max_depth`, `min_samples_leaf` |
 | `decision_tree` | classification, regression | `max_depth`, `min_samples_leaf` |
 | `gradient_boosting` | classification, regression | `trees`, `learning_rate`, `max_depth` |
+| `xgboost` | classification, regression | `trees`, `learning_rate`, `max_depth` |
 | `logistic_regression` | classification | `max_iter`, `c` |
 | `linear_regression` | regression | none |
 
@@ -144,6 +158,22 @@ rmse and r2.
 | regression | `mae`, `mse`, `rmse`, `r2` |
 
 Precision, recall and f1 use the binary average for 0/1 targets and the weighted average otherwise.
+
+## Registration
+
+```text
+register MODEL { name = "customer-churn", experiment = "eigrel-examples" }
+```
+
+Logs the trained model and its last evaluation to MLflow and registers a model version. `name`
+defaults to the model's name; `experiment` is optional. Requires the `mlflow` package
+(`pip install mlflow`); without a tracking server, runs are stored in `./mlruns` next to the
+program.
+
+The registered artifact is the whole pipeline — preprocessing and estimator trained together on
+the training rows only — so the model version accepts the raw columns the program trained on and
+applies every transform itself. Categories unseen in training are ignored instead of failing.
+Python backend only; `register` is not available on Spark yet.
 
 ## Spark backend
 
