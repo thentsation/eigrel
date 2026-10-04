@@ -29,6 +29,8 @@ class Parser:
             'train': self._train,
             'evaluate': self._evaluate,
             'register': self._register,
+            'assumptions': self._assumptions,
+            'predict': self._predict,
         }
 
     def parse_program(self) -> ast.Program:
@@ -136,6 +138,16 @@ class Parser:
         model = self._expect(TokenKind.IDENT, 'a model name').text
         params = self._param_block() if self._check(TokenKind.LBRACE) else ()
         return ast.RegisterStmt(model, params, loc=loc)
+
+    def _assumptions(self) -> ast.AssumptionsDecl:
+        loc = self._expect_keyword('assumptions').loc
+        dataset = self._expect(TokenKind.IDENT, 'a dataset name').text
+        return ast.AssumptionsDecl(dataset, self._param_block(), loc=loc)
+
+    def _predict(self) -> ast.PredictStmt:
+        loc = self._expect_keyword('predict').loc
+        model = self._expect(TokenKind.IDENT, 'a model name').text
+        return ast.PredictStmt(model, self._param_block(), loc=loc)
 
     def _param_block(self) -> tuple[ast.Param, ...]:
         self._expect(TokenKind.LBRACE, "'{'")

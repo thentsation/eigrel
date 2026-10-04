@@ -34,6 +34,11 @@ class Dataset:
     features: tuple[str, ...] | None = None
     # Column types, known when the source's schema is.
     types: dict[str, ExprType] = field(default_factory=dict)
+    # Declared with `assumptions`: the column that orders rows in time.
+    time: str | None = None
+    assumptions_loc: Location | None = None
+    # Fills applied so far, in order, so `predict` can replay them on serving data.
+    fills: list[tuple[str, ir.Value]] = field(default_factory=list)
 
 
 @dataclass
@@ -45,6 +50,10 @@ class Model:
     train_loc: Location | None = None
     evaluated: int | None = None
     register_loc: Location | None = None
+    # Known at training time: the feature columns (and their types) the model expects.
+    features: tuple[str, ...] | None = None
+    feature_types: dict[str, ExprType] = field(default_factory=dict)
+    fills: tuple[tuple[str, ir.Value], ...] = ()
 
 
 @dataclass
@@ -75,6 +84,10 @@ class Analyzer:
                     self._evaluate(statement)
                 case ast.RegisterStmt():
                     self._register(statement)
+                case ast.AssumptionsDecl():
+                    self._assumptions(statement)
+                case ast.PredictStmt():
+                    self._predict(statement)
         return self.graph
 
     # Statements
@@ -168,6 +181,7 @@ class Analyzer:
                         value = self._literal(param.value)
                         self._check_fill_type(param, value, dataset)
                         values.append((param.name, value))
+                    dataset.fills.extend(values)
                     _unique(
                         [column for column, _ in values],
                         [ast.Name(p.name, loc=p.loc) for p in op.values],
@@ -281,10 +295,21 @@ class Analyzer:
                 target,
                 validation,
                 seed,
+                dataset.time,
                 loc=stmt.loc,
             )
         )
         model.train_loc = stmt.loc
+        if dataset.features is not None:
+            model.features = dataset.features
+        elif dataset.columns is not None:
+            excluded = {target, dataset.time}
+            model.features = tuple(c for c in dataset.columns if c not in excluded)
+        if model.features is not None:
+            model.feature_types = {
+                c: dataset.types[c] for c in model.features if c in dataset.types
+            }
+        model.fills = tuple(dataset.fills)
 
     def _evaluate(self, stmt: ast.EvaluateStmt) -> None:
         model = self._model_named(stmt.model, stmt.loc)
@@ -310,6 +335,92 @@ class Analyzer:
             metrics = _unique([name.value for name in names], names, 'metric')
         model.evaluated = self.graph.add(
             ir.Evaluate(self.graph.next_id(), stmt.model, model.trained, metrics, loc=stmt.loc)
+        )
+
+    def _assumptions(self, decl: ast.AssumptionsDecl) -> None:
+        dataset = self._dataset_named(decl.dataset, decl.loc)
+        if dataset.assumptions_loc is not None:
+            raise SemanticError(
+                f"assumptions for '{decl.dataset}' are already declared at line"
+                f' {dataset.assumptions_loc.line}',
+                decl.loc,
+            )
+        params = self._params(decl.params, ('time',), 'assumptions')
+        if 'time' not in params:
+            raise SemanticError(
+                f'assumptions needs a time column, e.g. assumptions {decl.dataset} {{ time = day }}',
+                decl.loc,
+            )
+        column = self._name_value(params['time'], 'time')
+        self._check_column(column, params['time'].value.loc, dataset)
+        if dataset.types.get(column) == 'string':
+            raise SemanticError(
+                f"time column '{column}' is text; use a date, timestamp or number column",
+                params['time'].value.loc,
+            )
+        dataset.time = column
+        dataset.assumptions_loc = decl.loc
+
+    def _predict(self, stmt: ast.PredictStmt) -> None:
+        model = self._model_named(stmt.model, stmt.loc)
+        if model.trained is None:
+            raise SemanticError(
+                f"model '{stmt.model}' must be trained before it predicts", stmt.loc
+            )
+        params = self._params(stmt.params, ('data', 'output'), 'predict')
+        if 'data' not in params or 'output' not in params:
+            raise SemanticError(
+                f'predict needs data and output, e.g. predict {stmt.model}'
+                ' { data = new_rows, output = csv("scored.csv") }',
+                stmt.loc,
+            )
+        data_name = self._name_value(params['data'], 'data')
+        dataset = self._dataset_named(data_name, params['data'].value.loc)
+        output = params['output'].value
+        if (
+            not isinstance(output, ast.Call)
+            or output.func not in ('csv', 'parquet', 'json')
+            or len(output.args) != 1
+            or not isinstance(output.args[0], ast.StringLiteral)
+            or not output.args[0].value
+        ):
+            raise SemanticError(
+                'output must be a file: csv("path"), parquet("path") or json("path")', output.loc
+            )
+        # Train/serve skew: the serving data must provide every feature the model was trained
+        # on, with the same types, and receives the same fills as the training data.
+        if model.features is not None and dataset.columns is not None:
+            lacking = [c for c in model.features if c not in dataset.columns]
+            if lacking:
+                raise SemanticError(
+                    f"'{data_name}' lacks features the model was trained on: {', '.join(lacking)};"
+                    ' serving data must provide every training feature',
+                    params['data'].value.loc,
+                )
+        for column, expected in model.feature_types.items():
+            actual = dataset.types.get(column, 'unknown')
+            if 'unknown' not in (expected, actual) and expected != actual:
+                raise SemanticError(
+                    f"feature '{column}' is a {expected} in the training data but a {actual}"
+                    f" in '{data_name}'",
+                    params['data'].value.loc,
+                )
+        fills = tuple(
+            (column, value)
+            for column, value in model.fills
+            if model.features is None or column in model.features
+        )
+        self.graph.add(
+            ir.Predict(
+                self.graph.next_id(),
+                stmt.model,
+                model.trained,
+                dataset.op,
+                fills,
+                output.func,
+                output.args[0].value,
+                loc=stmt.loc,
+            )
         )
 
     def _register(self, stmt: ast.RegisterStmt) -> None:

@@ -15,6 +15,7 @@ from typing import Any, Literal
 from eigrel import __version__
 from eigrel.backends import sql
 from eigrel.compiler import EigrelError, analyze, ir, parse
+from eigrel.compiler.catalog import CAPABILITIES, handles_missing_values
 from eigrel.compiler.ir import format_expr
 from eigrel.compiler.tokens import Location
 from eigrel.probe import Column, Engine, ProbeError, count, engine_for, missing, value_counts
@@ -22,9 +23,6 @@ from eigrel.probe import Column, Engine, ProbeError, count, engine_for, missing,
 Severity = Literal['error', 'warning', 'info']
 Backend = Literal['python', 'spark']
 
-# Algorithms whose Python backend cannot train with missing numeric values. scikit-learn's trees
-# and XGBoost handle them; on Spark every algorithm fails, because VectorAssembler rejects nulls.
-NO_MISSING_VALUES_IN_PYTHON = {'logistic_regression', 'linear_regression', 'gradient_boosting'}
 IMBALANCE = 0.10
 MIN_VALIDATION_ROWS_PER_CLASS = 5
 CONTINUOUS_DISTINCT = 20
@@ -79,6 +77,19 @@ class TrainPlan:
     missing: dict[str, int] = field(default_factory=dict)
     classes: list[tuple[Any, int]] | None = None
     distinct: int | None = None
+    # With a declared time column: (first, last) values on each side of the split.
+    train_period: tuple[Any, Any] | None = None
+    validation_period: tuple[Any, Any] | None = None
+
+
+@dataclass
+class PredictPlan:
+    op: ir.Predict
+    dataset: str
+    rows: int | None = None
+    missing: dict[str, int] = field(default_factory=dict)
+    # Text feature values in the serving data that training never saw (encoded as all zeros).
+    unseen: dict[str, list[Any]] = field(default_factory=dict)
 
 
 @dataclass
@@ -87,6 +98,7 @@ class Plan:
     backend: Backend
     datasets: list[DatasetPlan] = field(default_factory=list)
     trains: list[TrainPlan] = field(default_factory=list)
+    predictions: list[PredictPlan] = field(default_factory=list)
     findings: list[Finding] = field(default_factory=list)
     graph: ir.Graph | None = None
     state_path: Path | None = None
@@ -153,6 +165,8 @@ def build_plan(path: Path, backend: Backend = 'python') -> Plan:
             case ir.Train():
                 trainer = probes.get(_dataset_of(graph, op.input))
                 _train(plan, op, graph, trainer, columns, schemas)
+            case ir.Predict():
+                _predict(plan, op, graph, probes, columns, schemas)
             case ir.Evaluate() | ir.Register():
                 pass
     _compare_state(plan, schemas, datasets)
@@ -201,7 +215,8 @@ def _train(
     if op.features is not None:
         train.features = op.features
     elif known is not None:
-        train.features = tuple(c.name for c in known if c.name != op.target)
+        excluded = {op.target, op.time}
+        train.features = tuple(c.name for c in known if c.name not in excluded)
     if engine is None:
         return
     quote = sql.dialect_for(_load_of(graph, op.input)).quote
@@ -221,6 +236,124 @@ def _train(
     train.train_rows = rows - train.validation_rows
     types = {c.name: c.type for c in known or ()}
     _check_training(plan, train, types)
+    if op.time is not None:
+        _check_time(plan, train, engine, query, quote)
+    else:
+        dates = [c.name for c in known or () if _is_date(c)]
+        if dates:
+            plan.add(
+                'warning',
+                'random-split',
+                f"'{dataset}' has a time column ({', '.join(dates)}) but the split is random,"
+                ' so validation rows can come from before training rows; declare'
+                f' `assumptions {dataset} {{ time = {dates[0]} }}` to validate on the latest rows',
+                op.loc,
+            )
+
+
+def _is_date(column: Column) -> bool:
+    return column.native.upper().startswith(('DATE', 'TIME'))
+
+
+def _check_time(plan: Plan, train: TrainPlan, engine: Engine, query: str, quote: str) -> None:
+    op = train.op
+    assert op.time is not None
+    gaps = missing(engine, query, [op.time], quote)[op.time]
+    if gaps:
+        plan.add(
+            'error',
+            'time-missing',
+            f"time column '{op.time}' has {gaps} missing values, so the rows cannot be ordered;"
+            f' add `drop_missing {op.time}`',
+            op.loc,
+        )
+        return
+    name = f'{quote}{op.time}{quote}'
+    ordered = f'SELECT {name} FROM ({query}) AS probe ORDER BY {name}'
+    rows = train.rows or 0
+    if not rows or not train.train_rows:
+        return
+    (first,) = engine.rows(f'{ordered} LIMIT 1')[0]
+    (last_train,) = engine.rows(f'{ordered} LIMIT 1 OFFSET {train.train_rows - 1}')[0]
+    (first_validation,) = engine.rows(f'{ordered} LIMIT 1 OFFSET {train.train_rows}')[0]
+    (last,) = engine.rows(f'{ordered} LIMIT 1 OFFSET {rows - 1}')[0]
+    train.train_period = (first, last_train)
+    train.validation_period = (first_validation, last)
+    if last_train == first_validation:
+        plan.add(
+            'info',
+            'time-overlap',
+            f'rows at {last_train} fall on both sides of the split; the split is by row order'
+            f" within '{op.time}'",
+            op.loc,
+        )
+
+
+def _predict(
+    plan: Plan,
+    op: ir.Predict,
+    graph: ir.Graph,
+    probes: dict[str, Engine],
+    columns: dict[str, tuple[Column, ...] | None],
+    schemas: dict[str, tuple[Column, ...]],
+) -> None:
+    dataset = _dataset_of(graph, op.input)
+    prediction = PredictPlan(op, dataset)
+    plan.predictions.append(prediction)
+    training = next(t for t in plan.trains if t.op.id == op.model)
+    engine = probes.get(dataset)
+    if engine is None or training.features is None:
+        return
+    serving_types = {c.name: c.type for c in columns.get(dataset) or ()}
+    features = [f for f in training.features if f in serving_types]
+    filled = {c for c, _ in op.fills}
+    quote = sql.dialect_for(_load_of(graph, op.input)).quote
+    try:
+        query = _query(graph, op.input, schemas)
+        prediction.rows = count(engine, query)
+        prediction.missing = missing(engine, query, features, quote)
+        trainer = probes.get(training.dataset)
+        if trainer is not None:
+            train_query = _query(graph, training.op.input, schemas)
+            train_quote = sql.dialect_for(_load_of(graph, training.op.input)).quote
+            for feature in features:
+                if serving_types.get(feature) != 'string':
+                    continue
+                seen = {
+                    v for v, _ in value_counts(trainer, train_query, feature, train_quote, 1000)[0]
+                }
+                served = {v for v, _ in value_counts(engine, query, feature, quote, 1000)[0]}
+                if new := sorted(served - seen, key=str):
+                    prediction.unseen[feature] = new
+    except ProbeError as exc:
+        plan.add('error', 'probe', f'{op.name}: {exc}', op.loc)
+        return
+    if prediction.rows == 0:
+        plan.add('error', 'empty', f"'{dataset}' has no rows to predict", op.loc)
+    gaps = {
+        c: n
+        for c, n in prediction.missing.items()
+        if n and c not in filled and serving_types.get(c) != 'string'
+    }
+    cannot_handle = not handles_missing_values(plan.backend, training.op.algorithm)
+    if gaps and cannot_handle:
+        listed = ', '.join(f'{c} ({n})' for c, n in gaps.items())
+        plan.add(
+            'error',
+            'missing-values',
+            f"serving rows in '{dataset}' have missing feature values the model cannot handle:"
+            f' {listed}; fill them before training so predict replays the fill',
+            op.loc,
+        )
+    for feature, values in prediction.unseen.items():
+        shown = ', '.join(repr(v) for v in values[:5]) + (', …' if len(values) > 5 else '')
+        plan.add(
+            'info',
+            'unseen-categories',
+            f"'{feature}' has values training never saw ({shown}); the model encodes them as"
+            ' unknown',
+            op.loc,
+        )
 
 
 def _check_training(plan: Plan, train: TrainPlan, types: Mapping[str, str]) -> None:
@@ -242,7 +375,7 @@ def _check_training(plan: Plan, train: TrainPlan, types: Mapping[str, str]) -> N
         for c, n in train.missing.items()
         if n and c != op.target and types.get(c, 'number') != 'string'
     }
-    cannot_handle = plan.backend == 'spark' or op.algorithm in NO_MISSING_VALUES_IN_PYTHON
+    cannot_handle = not handles_missing_values(plan.backend, op.algorithm)
     if numeric_missing and cannot_handle:
         listed = ', '.join(f'{c} ({n})' for c, n in numeric_missing.items())
         where = 'on Spark' if plan.backend == 'spark' else f'with {op.algorithm}'
@@ -281,18 +414,21 @@ def _check_training(plan: Plan, train: TrainPlan, types: Mapping[str, str]) -> N
             op.loc,
         )
         return
-    if plan.backend == 'spark' and op.algorithm == 'gradient_boosting' and distinct > 2:
+    multiclass_gbt = CAPABILITIES['multiclass gradient_boosting'][plan.backend] == 'yes'
+    if op.algorithm == 'gradient_boosting' and distinct > 2 and not multiclass_gbt:
         plan.add(
             'error',
             'capability',
-            f"gradient_boosting on Spark supports two classes, but '{op.target}' has {distinct}",
+            f"gradient_boosting on {plan.backend} supports two classes, but '{op.target}' has"
+            f' {distinct}',
             op.loc,
         )
     smallest_value, smallest = min(train.classes, key=lambda pair: pair[1])
     largest_value, largest = train.classes[0]
     total = sum(n for _, n in train.classes)
-    train.stratified = plan.backend == 'python' and smallest >= 2
-    if plan.backend == 'python' and smallest < 2:
+    randomized = op.time is None
+    train.stratified = plan.backend == 'python' and randomized and smallest >= 2
+    if plan.backend == 'python' and randomized and smallest < 2:
         plan.add(
             'warning',
             'no-stratify',
@@ -483,8 +619,23 @@ def to_json(plan: Plan) -> dict[str, Any]:
                     else None
                 ),
                 'distinct': t.distinct,
+                'time': t.op.time,
+                'train_period': list(t.train_period) if t.train_period else None,
+                'validation_period': list(t.validation_period) if t.validation_period else None,
             }
             for t in plan.trains
+        ],
+        'predictions': [
+            {
+                'model': p.op.name,
+                'dataset': p.dataset,
+                'rows': p.rows,
+                'output': {'format': p.op.format, 'path': p.op.path},
+                'fills': [{'column': c, 'value': v} for c, v in p.op.fills],
+                'missing': p.missing,
+                'unseen': p.unseen,
+            }
+            for p in plan.predictions
         ],
         'findings': [f.to_json() for f in plan.findings],
         'state': {
@@ -532,9 +683,17 @@ def render(plan: Plan) -> str:
         if train.rows is not None:
             approx = '' if plan.backend == 'python' else '~'
             how = ', stratified' if train.stratified else ''
+            if op.time is not None:
+                how = f', by {op.time}'
+                approx = ''
             lines.append(
                 f'  split: {approx}{train.train_rows} train / {approx}{train.validation_rows}'
                 f' validation ({op.validation:.0%}{how})'
+            )
+        if train.train_period is not None and train.validation_period is not None:
+            lines.append(
+                f'  by {op.time}: train {train.train_period[0]} … {train.train_period[1]},'
+                f' validation {train.validation_period[0]} … {train.validation_period[1]}'
             )
         if train.features is not None:
             lines.append(f'  features: {", ".join(train.features)}')
@@ -549,6 +708,17 @@ def render(plan: Plan) -> str:
                 lines.append('  missing values: ' + ', '.join(f'{c} {n}' for c, n in gaps.items()))
             else:
                 lines.append('  missing values: none')
+        lines.append('')
+    for prediction in plan.predictions:
+        predict = prediction.op
+        rows = f'{prediction.rows} rows' if prediction.rows is not None else 'rows not probed'
+        lines.append(
+            f'predict {predict.name} on {prediction.dataset}: {rows}'
+            f' into {predict.format}({predict.path!r})'
+        )
+        if predict.fills:
+            replayed = ', '.join(f'{c} = {ir.format_value(v)}' for c, v in predict.fills)
+            lines.append(f'  replays training fills: {replayed}')
         lines.append('')
     for finding in plan.findings:
         where = f'line {finding.loc.line}: ' if finding.loc is not None else ''

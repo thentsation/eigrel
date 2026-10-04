@@ -1,4 +1,4 @@
-# Eigrel language reference (v0.7)
+# Eigrel language reference (v0.8)
 
 This describes the syntax the parser accepts and the rules the compiler checks before generating
 code. Every rule below is reported at compile time, with the line and column of the problem.
@@ -13,7 +13,7 @@ code. Every rule below is reported at compile time, with the line and column of 
 - **Booleans**: `true`, `false`.
 
 Reserved keywords: `dataset from transform filter select fill drop_missing features model train
-evaluate register and or not true false`. Inside parameter blocks keywords may be used as parameter names
+evaluate register assumptions predict and or not true false`. Inside parameter blocks keywords may be used as parameter names
 (e.g. `model = "llm"`).
 
 ## Statements
@@ -22,6 +22,7 @@ evaluate register and or not true false`. Inside parameter blocks keywords may b
 program     := statement*
 
 statement   := dataset | transform | features | model | train | evaluate | register
+             | assumptions | predict
 
 dataset     := 'dataset' IDENT 'from' call
 transform   := 'transform' IDENT '{' transform_op* '}'
@@ -34,6 +35,8 @@ model       := 'model' IDENT '=' IDENT params?
 train       := 'train' IDENT params
 evaluate    := 'evaluate' IDENT params
 register    := 'register' IDENT params?
+assumptions := 'assumptions' IDENT params           # time = COLUMN
+predict     := 'predict' IDENT params               # data = DATASET, output = csv|parquet|json("path")
 
 params      := '{' (NAME '=' expr ','?)* '}'      # NAME is an identifier or keyword; no duplicates
 ```
@@ -169,6 +172,56 @@ it in the model registry: the training parameters, the metrics of the latest `ev
 to the model's name). MLflow uses `MLFLOW_TRACKING_URI`, or `mlflow.db` next to the program when it
 is unset. Needs the `mlflow` extra.
 
+### Time-ordered splits
+
+```eigrel
+assumptions customers {
+    time = signup_date
+}
+```
+
+Declaring a dataset's time column makes every model trained on it validate on the latest rows
+(the last `validation` fraction in time order) instead of a random sample, so the model never
+learns from the future of the rows it is validated on. The time column is left out of implicit
+features. It must be a date, timestamp or number; `eigrel plan` shows the period on each side of
+the split, and warns (`random-split`) when a dataset with a date column is split at random.
+
+### Predicting
+
+```eigrel
+predict churn {
+    data = new_customers
+    output = csv("scored.csv")
+}
+```
+
+`predict` scores a dataset with a trained model and writes it with `<target>_prediction` (and
+`<target>_probability` for two classes) added. The serving path is the training path: the
+compiler requires the data to provide every feature the model was trained on, with the same
+types, and replays the fills applied to the training data on those features; violations are
+compile errors (or `schema` errors in `eigrel plan`, when only the data knows the columns).
+Classifiers predict the original classes, and registered models do too. On Spark the output path
+is a directory of part files.
+
+## Backend capabilities
+
+`eigrel plan` checks programs against this table; a test keeps it in sync with the compiler.
+
+| Capability | Python | Spark | SQL |
+|---|---|---|---|
+| csv, parquet, json sources | yes | yes | yes (DuckDB) |
+| sql() sources | yes | yes (JDBC) | yes |
+| bigquery() sources | yes | yes (connector) | yes |
+| filter, select, fill, drop_missing | yes | yes | yes |
+| training and evaluation | yes | yes | no |
+| missing values in numeric features | random_forest, decision_tree, xgboost | no | no |
+| multiclass gradient_boosting | yes | no | no |
+| auc on multiclass targets | yes | no | no |
+| stratified validation split | yes | no | no |
+| time-ordered split (assumptions) | yes | yes | no |
+| register (MLflow) | yes | yes | no |
+| predict | yes | yes | no |
+
 ## Plans
 
 `eigrel plan` is the step between `check` and `run`. `check` never touches data; `plan` reads it:
@@ -190,7 +243,11 @@ is unset. Needs the `mlflow` extra.
 | `missing-values` | error | numeric features with missing values, for an algorithm or backend that rejects them |
 | `text-target` | error | regression on a text target |
 | `one-class` | error | the target has a single class |
-| `capability` | error | the backend cannot do this (e.g. multiclass gradient boosting on Spark) |
+| `capability` | error | the backend cannot do this (see [Backend capabilities](#backend-capabilities)) |
+| `time-missing` | error | the declared time column has missing values |
+| `random-split` | warning | a dataset with a date column is split at random; declare its time column |
+| `time-overlap` | info | rows with the same time fall on both sides of the split |
+| `unseen-categories` | info | serving data has text values training never saw |
 | `continuous-target` | warning | classification on a numeric target with many distinct values |
 | `imbalance` | warning | the smallest class is under 10% of the rows |
 | `small-validation` | warning | fewer than 5 rows of a class are expected in the validation split |

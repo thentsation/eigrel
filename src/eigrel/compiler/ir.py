@@ -76,6 +76,8 @@ class Train(Op):
     target: str
     validation: float
     seed: int
+    # Declared time column: the split is chronological (validation on the latest rows).
+    time: str | None = None
 
 
 @dataclass(frozen=True)
@@ -91,6 +93,16 @@ class Register(Op):
     experiment: str | None
     # The latest evaluation of the model before it is registered, whose metrics are logged.
     evaluation: int | None
+
+
+@dataclass(frozen=True)
+class Predict(Op):
+    model: int
+    input: int
+    # The training data's fills on feature columns, replayed so serving sees the same values.
+    fills: tuple[tuple[str, Value], ...]
+    format: str
+    path: str
 
 
 @dataclass
@@ -176,8 +188,16 @@ def format_graph(graph: Graph) -> str:
                     f' features=[{features}] target={op.target}'
                     f' validation={op.validation} seed={op.seed}'
                 )
+                if op.time is not None:
+                    body += f' time={op.time}'
             case Evaluate():
                 body = f'evaluate %{op.model} [{", ".join(op.metrics)}]'
+            case Predict():
+                fills = ', '.join(f'{c} = {format_value(v)}' for c, v in op.fills)
+                body = f'predict %{op.model} on %{op.input}'
+                if fills:
+                    body += f' fill [{fills}]'
+                body += f' into {op.format}({format_value(op.path)})'
             case Register():
                 body = f'register %{op.model} as {format_value(op.registered_name)}'
                 if op.experiment is not None:

@@ -15,7 +15,8 @@ def eigrel_blocks() -> list[str]:
 
 def test_every_kind_of_statement_is_documented_and_parses() -> None:
     blocks = eigrel_blocks()
-    assert len(blocks) == 7  # dataset, transform, features, model, train, evaluate, register
+    # dataset, transform, features, model, train, evaluate, register, assumptions, predict
+    assert len(blocks) == 9
     for block in blocks:
         parse(block)  # syntax only: blocks reference each other's datasets and models
 

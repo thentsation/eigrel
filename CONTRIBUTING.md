@@ -59,6 +59,7 @@ Java 17+ runtime are available (`pytest -m spark` runs only them). CI runs them 
 | `src/eigrel/backends/` | Code generators from IR: `python.py` (pandas + scikit-learn), `spark.py` (PySpark + MLlib), `sql.py` (one query per dataset), and `naming.py` (clash-free variable names) |
 | `src/eigrel/planner.py`, `src/eigrel/probe.py` | `eigrel plan`: probing sources with DuckDB or SQLAlchemy, findings, `.eigstate` |
 | `src/eigrel/cli.py` | The `eigrel` command |
+| `src/eigrel/runtime.py` | Helpers the generated code and registered models import (e.g. the label-decoding classifier) |
 | `src/eigrel/starter.py` | Program and sample data created by `eigrel init` |
 | `tests/` | pytest suite |
 | `examples/` | Example programs, checked in CI |

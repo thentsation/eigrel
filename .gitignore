@@ -14,3 +14,6 @@ dist/
 # MLflow runs created by `register` when no tracking server is configured
 mlflow.db
 mlruns/
+
+# Predictions written by examples/serving.eig
+examples/data/scored.csv

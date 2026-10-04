@@ -153,8 +153,28 @@ class RegisterStmt(Node):
     params: tuple[Param, ...]
 
 
+@dataclass(frozen=True)
+class AssumptionsDecl(Node):
+    dataset: str
+    params: tuple[Param, ...]
+
+
+@dataclass(frozen=True)
+class PredictStmt(Node):
+    model: str
+    params: tuple[Param, ...]
+
+
 Statement = (
-    DatasetDecl | TransformDecl | FeaturesDecl | ModelDecl | TrainStmt | EvaluateStmt | RegisterStmt
+    DatasetDecl
+    | TransformDecl
+    | FeaturesDecl
+    | ModelDecl
+    | TrainStmt
+    | EvaluateStmt
+    | RegisterStmt
+    | AssumptionsDecl
+    | PredictStmt
 )
 
 
