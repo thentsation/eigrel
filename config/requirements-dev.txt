@@ -1,10 +1,10 @@
 -r requirements.txt
-ruff==0.16.9
-mypy==2.3.1
+ruff==0.17.2
+mypy==2.4.0
 pytest==9.1.1
 pytest-cov==7.1.0
 # Runs `register` in the tests and examples; not part of the Docker image.
-mlflow==3.16.1
+mlflow==3.17.2
 # Runs the MCP server in the tests.
 mcp==2.3.0
 # Validates the JSON outputs against docs/schemas.
